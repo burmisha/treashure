@@ -24,5 +24,3 @@ cat $cur_files $bu_files \
   | sort -k2,2 \
   | uniq -f 1 -u \
   | sort
-
-

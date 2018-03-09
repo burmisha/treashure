@@ -1,4 +1,3 @@
-burmisha
-
-A great place to store scripts!
-
+Scripts to handle files on local computer:
+— find duplicates,
+— check backups.
