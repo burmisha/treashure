@@ -67,13 +67,14 @@ def checkGarmin(args):
             deviceStats['success'] += 1
         deviceStats['total'] += 1
     log.info('Device files stats: %r', dict(deviceStats))
+
     if args.open:
         if deviceStats['not_imported']:
             log.info('Import new tracks manually')
             openDir(srcPath)
             openDir(dstPath)
             url = 'https://www.strava.com/upload/select'
-            webbrowser.open(, new=2)
+            webbrowser.open(url, new=2)
         if deviceStats['success'] and deviceStats['success'] == deviceStats['total']:
             log.info('Clean tracks from device manually')
             openDir(srcPath)
