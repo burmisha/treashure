@@ -4,8 +4,6 @@ import argparse
 import collections
 import md5sum
 import os
-import platform
-import subprocess
 import webbrowser
 
 import logging
@@ -29,16 +27,6 @@ def walkFiles(dirname, extensions=[], dirsOnly=False):
     log.info('Found {} {} in {}'.format(count, logName, dirname))
 
 
-def openDir(dirname):
-    if os.path.isdir(dirname):
-        if platform.system() == 'Darwin':
-            subprocess.call(['open', '-R', dirname + '/'])
-        else:
-            log.warn('Could not open path, only OS X is supported')
-    else:
-        raise RuntimeError('No dir {!r}'.format(dirname))
-
-
 def checkGarmin(args):
     srcPath = args.garmin
     dstPath = args.tracks
@@ -51,6 +39,7 @@ def checkGarmin(args):
         processed[md5sum.Md5Sum(filename)] = filename
 
     deviceStats = collections.defaultdict(int)
+    dstFile = None
     for md5value, track in sorted(
         onDevice.iteritems(),
         key=lambda x: os.path.getmtime(x[1])
@@ -58,6 +47,8 @@ def checkGarmin(args):
         sameImported = processed.get(md5value)
         if sameImported is None:
             deviceStats['not_imported'] += 1
+            if not dstFile:
+                dstFile = track
             log.warn('Not imported: %r', track)
         elif os.path.basename(sameImported) != os.path.basename(track):
             log.warn('Broken name: %r -> %r', track, sameImported)
@@ -69,15 +60,15 @@ def checkGarmin(args):
     log.info('Device files stats: %r', dict(deviceStats))
 
     if args.open:
-        if deviceStats['not_imported']:
+        if dstFile:
             log.info('Import new tracks manually')
-            openDir(srcPath)
-            openDir(dstPath)
+            md5sum.openDir(srcPath)
+            md5sum.openDir(dstFile)
             url = 'https://www.strava.com/upload/select'
             webbrowser.open(url, new=2)
         if deviceStats['success'] and deviceStats['success'] == deviceStats['total']:
             log.info('Clean tracks from device manually')
-            openDir(srcPath)
+            md5sum.openDir(srcPath)
 
 
 def CreateArgumentsParser():
