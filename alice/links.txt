@@ -1,0 +1,38 @@
+https://tech.yandex.ru/dialogs/alice/doc/quickstart-python-docpage/
+https://beta.dialogs.yandex.ru/developer/
+
+virtualenv --python=$(which python) venv
+. venv/bin/activate
+pip install -r crocodile/requirements.txt 
+
+now --public elephant
+now alias https://elephant-lbebzvnadu.now.sh elephant
+https://elephant-lbebzvnadu.now.sh/_src
+
+https://crocodile-hxgikmgvln.now.sh
+now deploy --public crocodile
+now alias https://crocodile-fozcxrszey.now.sh crocodile
+curl 'https://crocodile.now.sh'
+echo 'https://crocodile.now.sh/_src'
+now logs https://crocodile.now.sh
+curl 'https://crocodile-gcyznsjtgb.now.sh'
+
+deploy () {
+  appName="${1}"
+  now rm --yes "${appName}" || true
+  now deploy --public "${appName}"
+  appHostname="$(pbpaste)"
+  now alias "${appHostname}" "${appName}"
+  curl "https://${appName}.now.sh"
+  echo "https://${appName}.now.sh/_src"
+}
+deploy chgk
+
+burmisha-elephant
+покупку слона
+https://elephant-lbebzvnadu.now.sh
+burmisha
+Покупка слонов онлайн
+Давай купим
+"запусти слона, хорошо"
+"запусти покупку слона, хорошо"
