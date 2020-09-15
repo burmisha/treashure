@@ -1,28 +1,68 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 import argparse
-import md5sum
-# import json
+import json
 import os
+import re
+import time
+import datetime
+
 import PIL
 import PIL.Image
 import PIL.ExifTags
 
 from pprint import pprint
 
-from collections import defaultdict
+import md5sum
+import collections
 
 import logging
-import re
 log = logging.getLogger(__file__)
+
 
 class NoExifInPng(Exception):
     pass
+
+
+def timestampFromStr(dateStr, fmt):
+    formatter = lambda s: s.replace(':', '-').replace('.', '-')
+    tmpStr = formatter(dateStr)
+    tmpFmt = formatter(fmt)
+    timestamp = int(time.mktime(datetime.datetime.strptime(tmpStr, fmt).timetuple()))
+    if 1300000000 < timestamp < 1600000000:
+        pass
+    elif timestamp == 0:
+        log.warn('Timestamp is 0')
+    else:
+        raise RuntimeError('Invalid timestamp {} from {!r}'.format(timestamp, dateStr))
+    return timestamp
+
+def toDict(photofile):
+    return {
+        'path': photofile.Path,
+        'md5sum': photofile.Md5Sum,
+        'timestamps': photofile.Timestamps,
+    }
+
+def fromDict(photofileJson):
+    photofile = PhotoFile(photofileJson['path'])
+    photofile.Md5Sum = photofileJson['md5sum']
+    photofile.Timestamps = photofileJson['timestamps']
+    return photofile
 
 class PhotoFile(object):
     def __init__(self, pathToFile):
         self.Path = pathToFile
         self.Exif = None
+        self.Basename = os.path.basename(self.Path)
+
+    def LogMessage(self, message, base=False):
+        if base:
+            logMessage = '{} in basename {}'.format(message, self.Basename)
+        else:
+            logMessage = '{} in file {}'.format(message, self.Path)
+        return logMessage
 
     def GetExif(self):
         with PIL.Image.open(self.Path) as image:
@@ -36,7 +76,7 @@ class PhotoFile(object):
                     # https://stackoverflow.com/questions/4764932/in-python-how-do-i-read-the-exif-data-for-an-image
                     exif = { PIL.ExifTags.TAGS[k]: v for k, v in rawExif.iteritems() if k in PIL.ExifTags.TAGS }
         if exif is None:
-            log.warn('No exif')
+            log.warn(self.LogMessage('No exif'))
         self.Exif = exif
 
     def ParseGps(self):
@@ -51,24 +91,43 @@ class PhotoFile(object):
         if 'Make' in self.Exif:
             camera = '{} {}'.format(self.Exif['Make'], self.Exif['Model'])
         else:
-            log.debug('No camera: {!r} {!r}'.format(self.Exif.get('Make'), self.Exif.get('Model')))
+            log.debug(self.LogMessage('No camera: {!r} {!r}'.format(self.Exif.get('Make'), self.Exif.get('Model'))))
             camera = None
         return camera
 
-    def GetDate(self, basename):
+    def GetDate(self):
+        timestamps = set()
+        filenameTimestamp = None
         if (
-            re.match(r'^\d{4}(.\d\d){2} \d\d(.\d\d){2}( 1)?\..{3}$', basename)
-            or re.match(r'^\d{4}(.\d\d){2} \d\d(.\d\d){2}_\d{10}\..{3}$', basename)
+            re.match(r'^\d{4}(-\d{2}){2} \d{2}([-\.]\d{2}){2}( 1)?\.\w{3,4}$', self.Basename)
+            or re.match(r'^\d{4}(-\d{2}){2} \d{2}([-\.]\d{2}){2}_\d{10}\.\w{3}$', self.Basename)
         ):
-            log.debug('Name has date')
-        elif (
-            re.match(r'^IMG_.*', basename)
-        ):
-            log.debug('Name has no date')
+            filenameTimestamp = timestampFromStr(self.Basename[:19], '%Y-%m-%d %H-%M-%S')
+        elif re.match(r'^wp_ss_\d{8}_\d{4}\.\w{3}$', self.Basename):
+            filenameTimestamp = timestampFromStr(self.Basename[6:18], '%Y%m%d_%H%M')
+        elif re.match(r'^Screenshot_\d{4}(-\d{2}){5}(-\d{3})?_.*.(png|jpg)$', self.Basename):
+            # skipping subseconds
+            filenameTimestamp = timestampFromStr(self.Basename[11:30], '%Y-%m-%d-%H-%M-%S')
+        elif re.match(r'^IMG_\d{8}_\d{6}(_HDR|_HHT|_1)?\.(JPG|jpg|dng)$', self.Basename):
+            filenameTimestamp = timestampFromStr(self.Basename[4:19], '%Y%m%d_%H%M%S')
+        elif re.match(r'^WP_\d{8}(_\d{2}){3}_(Pro|Smart|Panorama|Selfie|SmartShoot).*\.jpg$', self.Basename):
+            filenameTimestamp = timestampFromStr(self.Basename[3:20], '%Y%m%d_%H_%M_%S')
+        elif re.match(r'^DOS-\d{4}(-\d{2}){2} \d{2}(_\d{2}){2}Z\.jpg$', self.Basename):
+            filenameTimestamp = timestampFromStr(self.Basename[4:23], '%Y-%m-%d %H_%M_%S')
         else:
-            raise
+        # elif (
+        #     re.match(r'^IMG_.*', self.Basename)
+        # ):
+            log.warn(self.LogMessage('Cannot get date', base=True))
+        # else:
+            # raise RuntimeError(self.LogMessage('Unknown name format: ', base=True))
+            # log.warn(self.LogMessage('Unknown name format', base=True))
+            # log.warn(self.LogMessage('Unknown name format'))
+        if filenameTimestamp is not None:
+            log.debug('Name {!r} has date: {}'.format(self.Basename, filenameTimestamp))
+            timestamps.add(filenameTimestamp)
+
         if self.Exif:
-            times = set()
             isVsco = self.IsVsco()
             for key, value in self.Exif.iteritems():
                 lowerKey = key.lower()
@@ -77,8 +136,10 @@ class PhotoFile(object):
                     'DateTimeDigitized',
                     'DateTimeOriginal',
                 ]:
-                    assert re.match(r'^\d{4}(:\d\d){2} (\d\d)(:\d\d){2}$', value)
-                    times.add(value)
+                    assert re.match(r'^\d{4}(:\d{2}){2} (\d{2})(:\d{2}){2}$', value)
+                    timestamp = timestampFromStr(value, '%Y-%m-%d %H-%M-%S')
+                    log.debug('Date {} is {} ({})'.format(key, value, timestamp))
+                    timestamps.add(timestamp)
                 elif key in [
                     'SubsecTime',
                     'SubsecTimeDigitized',
@@ -87,7 +148,16 @@ class PhotoFile(object):
                 ]:
                     pass
                 elif 'date' in lowerKey or 'time' in lowerKey:
-                    raise RuntimeError('Unknown datetime key: {!r} {!r}'.format(key, value))
+                    raise RuntimeError(self.LogMessage('Unknown datetime key: {!r} {!r}'.format(key, value)))
+        timestamps = sorted(list(timestamps))
+        if not timestamps:
+            log.warn(self.LogMessage('No timestamps'))
+            # raise RuntimeError('No timestamps')
+        elif len(timestamps) > 3:
+            # yes, they exist
+            raise RuntimeError(self.LogMessage('Too many timestamps {}'.format(timestamps)))
+        return timestamps
+
 
     def IsVsco(self):
         isVsco = False
@@ -100,30 +170,37 @@ class PhotoFile(object):
 
     def ReadInfo(self):
         log.debug('Reading {}'.format(self.Path))
-        md5 = md5sum.Md5Sum(self.Path)
+        self.Md5Sum = md5sum.Md5Sum(self.Path)
         imageFormat = self.Path.split('.')[-1]
         if imageFormat.lower() in ['jpg', 'jpeg']:
             try:
                 self.GetExif()
             except NoExifInPng:
-                log.warn('File is PNG, not jpeg')
+                log.warn(self.LogMessage('File is PNG, not jpeg'))
         elif imageFormat in ['png', 'PNG']:
-            log.warn('Png has no exif')
+            log.debug(self.LogMessage('Png has no exif'))
+        elif imageFormat in ['dng']:
+            log.warn(self.LogMessage('Exif from dng is not supported'))
         else:
             raise RuntimeError('Invalid format')
         try:
             if self.Exif:
-                gpsInfo = self.ParseGps()
-                camera = self.GetCamera()
-                self.GetDate(os.path.basename(self.Path))
+                self.GpsInfo = self.ParseGps()
+                self.Camera = self.GetCamera()
+            self.Timestamps = self.GetDate()
         except:
             pprint(self.Exif)
             raise
 
+
 class Processor(object):
     def __init__(self):
-        self.ParseExtensions = [ 'jpg', 'jpeg', 'png' ]
-        self.SkipExtensions = [ 'ds_store', 'mp4', 'mov', 'nar', 'icon' ]
+        self.ParseExtensions = [ 'jpg', 'jpeg', 'png', 'dng' ]
+        self.SkipExtensions = [
+            'ds_store', 'ini', # ok
+            'mp4', 'mov', 'nar', 'icon', 'gif', # TODO
+        ]
+        self.OpenedDir = False
 
     def __call__(self, filename):
         extension = os.path.basename(filename).split('.')[-1].lower().strip()
@@ -131,38 +208,87 @@ class Processor(object):
         if extension in self.ParseExtensions:
             photoFile = PhotoFile(filename)
             photoFile.ReadInfo()
+            return photoFile
         elif extension in self.SkipExtensions:
             log.debug('Skipping {}'.format(filename))
+            return None
         else:
-            raise RuntimeError('Unknown file extension: {!r}: {!r}'.format(filename, extension))
-        return photoFile
+            log.error('Unknown file extension: %r: %r', filename, extension)
+            if not self.OpenedDir:
+                self.OpenedDir = True
+                md5sum.openDir(filename)
+            # raise RuntimeError()
 
 
-def main(args):
-    processor = Processor()
-    for dirName in args.dir:
+def getFilenames(dirs, files, excludeDirs):
+    counter = 0
+    for filename in files:
+        counter += 1
+        yield filename
+
+    for dirName in dirs:
         for root, _, files in os.walk(dirName):
-            files = list(files)
+            if any(root.startswith(excludeDir) for excludeDir in excludeDirs):
+                log.info('{} is excluded'.format(root))
+                continue
+            files = sorted(list(files))
             log.info('Found {} files in {}'.format(len(files), root))
             for filename in files:
-                processor(os.path.join(root, filename))
+                counter += 1
+                yield os.path.join(root, filename)
+                if counter % 500 == 0:
+                    log.info('Yielded {} photo files'.format(counter))
 
-    for filename in args.file:
-        processor(filename)
+    log.info('Yielded {} photo files'.format(counter))
+
+
+def processDirs(args):
+    photoFiles = []
+    processor = Processor()
+    for filename in getFilenames(args.dir, args.file, args.exclude):
+        photoFile = processor(filename)
+        if photoFile is not None:
+            photoFiles.append(photoFile)
+
+    with open(args.json_file, 'w') as f:
+        f.write(json.dumps(
+            [toDict(photoFile) for photoFile in photoFiles],
+            indent=4,
+            sort_keys=True,
+            ensure_ascii=False,
+        ))
+
+
+def analyze(args):
+    with open(args.json_file) as f:
+        res = json.load(f)
+    photoFiles = collections.defaultdict(list)
+    for item in res:
+        photoFile = fromDict(item)
+        photoFiles[photoFile.Md5Sum].append(photoFile)
+
+    for md5sumValue, photoFilesList in photoFiles.iteritems():
+        if len(photoFilesList) > 1:
+            log.info(u'Duplicates: {}\n  {}'.format(
+                md5sumValue,
+                '\n  '.join(photoFile.Path for photoFile in photoFilesList)
+            ))
 
 
 def CreateArgumentsParser():
-    parser = argparse.ArgumentParser('Organize mobile photos')
+    parser = argparse.ArgumentParser('Organize mobile photos', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--debug', help='Debug logging', action='store_true')
-    # subparsers = parser.add_subparsers(help='Modes')
+    parser.add_argument('--json-file', help='Json file to store all data', default='data.json')
+    subparsers = parser.add_subparsers(help='Modes')
 
-    # dirsParser = subparsers.add_parser('dirs', help='Process many dirs')
-    parser.add_argument('--dir', help='Add dir to parsing', action='append', default=[])
-    parser.add_argument('--file', help='Add file to parsing', action='append', default=[])
-    # parser.set_defaults(func=processDirs)
+    dirsParser = subparsers.add_parser('parse', help='Process many dirs')
+    dirsParser.add_argument('--dir', help='Add dir to parsing', action='append', default=[])
+    dirsParser.add_argument('--exclude', help='Exclude dir from parsing', action='append', default=[])
+    dirsParser.add_argument('--file', help='Add file to parsing', action='append', default=[])
+    dirsParser.set_defaults(func=processDirs)
 
-    # fileParser = subparsers.add_parser('file', help='Process files one by one')
-    # fileParser.set_defaults(func=processDirs)
+    analyzeParser = subparsers.add_parser('analyze', help='Get info from json')
+    analyzeParser.set_defaults(func=analyze)
     return parser
 
 if __name__ == '__main__':
@@ -170,4 +296,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s')
     log.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    main(args)
+    args.func(args)
