@@ -2,8 +2,10 @@
 
 import argparse
 import collections
+import datetime
 import md5sum
 import os
+import time
 import webbrowser
 
 import logging
@@ -31,21 +33,37 @@ def walkFiles(dirname, extensions=[], dirsOnly=False):
 
 
 def loadFitFiles(dirname):
-    onDevice = {}
+    hashsums = {}
     for filename in walkFiles(dirname, extensions=['.FIT']):
-        onDevice[md5sum.Md5Sum(filename)] = filename
-    return onDevice
+        hashsums[md5sum.Md5Sum(filename)] = filename
+    return hashsums
+
+
+def getPathToOpen(path, srcFile):
+    dirname = os.path.join(path, datetime.datetime.fromtimestamp(os.path.getmtime(srcFile)).strftime('%Y'))
+    if not os.path.exists(dirname):
+        log.warn('Create missing %s', dirname)
+        return dirname
+    else:
+        filename = walkFiles(dirname).next()
+        return filename
 
 
 def checkGarmin(args):
     srcPath = args.garmin
     dstPath = args.tracks
 
-    onDevice = loadFitFiles(srcPath)
+    onDevice = None
+    while not onDevice:
+        onDevice = loadFitFiles(srcPath)
+        sleepTime = 5
+        if not onDevice:
+            log.info('Sleeping for %r seconds', sleepTime)
+            time.sleep(sleepTime)
     processed = loadFitFiles(dstPath)
 
     deviceStats = collections.defaultdict(int)
-    srcFile = None
+    sourceFiles = []
     for md5value, track in sorted(
         onDevice.iteritems(),
         key=lambda x: os.path.getmtime(x[1])
@@ -53,8 +71,7 @@ def checkGarmin(args):
         sameImported = processed.get(md5value)
         if sameImported is None:
             deviceStats['not_imported'] += 1
-            if not srcFile:
-                srcFile = track
+            sourceFiles.append(track)
             log.warn('Not imported: %r', track)
         elif os.path.basename(sameImported) != os.path.basename(track):
             log.warn('Broken name: %r -> %r', track, sameImported)
@@ -66,10 +83,10 @@ def checkGarmin(args):
     log.info('Device files stats: %r', dict(deviceStats))
 
     if args.open:
-        if srcFile:
+        if sourceFiles:
             log.info('Import new tracks manually')
-            md5sum.openDir(srcFile)
-            md5sum.openDir(dstPath)
+            md5sum.openDir(sourceFiles[0])
+            md5sum.openDir(getPathToOpen(dstPath, sourceFiles[0]))
             url = 'https://www.strava.com/upload/select'
             webbrowser.open(url, new=2)
         if deviceStats['success'] and deviceStats['success'] == deviceStats['total']:
