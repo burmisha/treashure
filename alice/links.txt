@@ -5,27 +5,25 @@ virtualenv --python=$(which python) venv
 . venv/bin/activate
 pip install -r crocodile/requirements.txt 
 
-now --public elephant
-now alias https://elephant-lbebzvnadu.now.sh elephant
-https://elephant-lbebzvnadu.now.sh/_src
-
-https://crocodile-hxgikmgvln.now.sh
-now deploy --public crocodile
-now alias https://crocodile-fozcxrszey.now.sh crocodile
-curl 'https://crocodile.now.sh'
-echo 'https://crocodile.now.sh/_src'
-now logs https://crocodile.now.sh
-curl 'https://crocodile-gcyznsjtgb.now.sh'
-
 deploy () {
   appName="${1}"
-  now rm --yes "${appName}" || true
+  filename="./${appName}/${appName}.py"
+  # sed 's|# run_tests|run_tests|g' -i ${filename}
+  ${filename}
+  # now rm --yes "${appName}" || true
   now deploy --public "${appName}"
+  sleep 5
   appHostname="$(pbpaste)"
   now alias "${appHostname}" "${appName}"
   curl "https://${appName}.now.sh"
+  now logs https://${appName}.now.sh
+  echo ''
   echo "https://${appName}.now.sh/_src"
 }
+deploy matriculation
+
+deploy crocodile
+deploy elephant
 deploy chgk
 
 burmisha-elephant
