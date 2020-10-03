@@ -177,8 +177,8 @@ class Track(object):
             speed_to_pace(self.__AverageSpeed),
             self.__AverageSpeed,
             track_type,
-            ', patched %r' % self.__Patched if self.__Patched else '',
-            ' original was %.3f km' % self.__OriginalDistance if self.__Patched else '',
+            u', patched %r' % self.__Patched if self.__Patched else '',
+            u' original was %.3f km' % self.__OriginalDistance if self.__Patched else '',
         )
 
     def IsPatched(self):
