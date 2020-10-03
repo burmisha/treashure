@@ -91,6 +91,9 @@ def CreateArgumentsParser():
     joinParser = subparsers.add_parser('join', help='Join old tracks into one')
     tools.gpxparser.populate_parser(joinParser)
 
+    analyzeParser = subparsers.add_parser('analyze', help='Analyze files')
+    tools.speed.populate_parser(analyzeParser)
+
     return parser
 
 
@@ -102,4 +105,9 @@ if __name__ == '__main__':
     logLevel = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(level=logLevel, format=logFormat, datefmt='%H:%M:%S')
 
+    start_time = time.time()
     args.func(args)
+    finish_time = time.time()
+    duration = finish_time  - start_time
+    if duration >= 2:
+        log.info('Completed in %.2f seconds', duration)
