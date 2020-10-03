@@ -3,39 +3,21 @@
 import argparse
 import collections
 import datetime
-import md5sum
 import os
 import time
 import webbrowser
+
+import tools
+import library
 
 import logging
 log = logging.getLogger('treashure.garmin')
 
 
-def walkFiles(dirname, extensions=[], dirsOnly=False):
-    dirName = str(dirname)
-    logName = 'dirs' if dirsOnly else 'files'
-    log.info('Looking for %s of types %r in %s', logName, extensions, dirName)
-    count = 0
-    if not os.path.exists(dirName):
-        log.error('Path %r is missing', dirName)
-    for root, dirs, files in os.walk(dirName):
-        if dirsOnly:
-            for directory in dirs:
-                count += 1
-                yield os.path.join(root, directory)
-        else:
-            for filename in files:
-                if not extensions or any(filename.endswith(extension) for extension in extensions):
-                    count += 1
-                    yield os.path.join(root, filename)
-    log.info('Found %d %s in %s', count, logName, dirName)
-
-
 def loadFitFiles(dirname):
     hashsums = {}
-    for filename in walkFiles(dirname, extensions=['.FIT']):
-        hashsums[md5sum.Md5Sum(filename)] = filename
+    for filename in library.files.walk(dirname, extensions=['.FIT']):
+        hashsums[tools.md5sum.Md5Sum(filename)] = filename
     return hashsums
 
 
@@ -45,11 +27,11 @@ def getPathToOpen(path, srcFile):
         log.warn('Create missing %s', dirname)
         return dirname
     else:
-        filename = walkFiles(dirname).next()
+        filename = library.files.walk(dirname).next()
         return filename
 
 
-def checkGarmin(args):
+def runImport(args):
     srcPath = args.garmin
     dstPath = args.tracks
 
@@ -95,18 +77,29 @@ def checkGarmin(args):
 
 
 def CreateArgumentsParser():
-    parser = argparse.ArgumentParser('Check GARMIN tracks', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    formatter_class = argparse.ArgumentDefaultsHelpFormatter
+    parser = argparse.ArgumentParser('Check Garmin tracks', formatter_class=formatter_class)
     parser.add_argument('--debug', help='Debug logging', action='store_true')
-    parser.add_argument('--tracks', help='All tracks', default='/Volumes/Macintosh HD/Users/burmisha/Dropbox/running')
-    parser.add_argument('--garmin', help='Json file to store all data', default='/Volumes/GARMIN/GARMIN/ACTIVITY')
-    parser.add_argument('--open', help='Open webbrowser and dirs', action='store_true')
-    parser.set_defaults(func=checkGarmin)
+    subparsers = parser.add_subparsers()
+
+    importParser = subparsers.add_parser('import', help='Import tracks from device', formatter_class=formatter_class)
+    importParser.add_argument('--tracks', help='All tracks', default='/Volumes/Macintosh HD/Users/burmisha/Dropbox/running')
+    importParser.add_argument('--garmin', help='Json file to store all data', default='/Volumes/GARMIN/GARMIN/ACTIVITY')
+    importParser.add_argument('--open', help='Open webbrowser and dirs', action='store_true')
+    importParser.set_defaults(func=runImport)
+
+    joinParser = subparsers.add_parser('join', help='Join old tracks into one')
+    tools.gpxparser.populate_parser(joinParser)
+
     return parser
 
 
 if __name__ == '__main__':
     parser = CreateArgumentsParser()
     args = parser.parse_args()
-    logging.basicConfig(format='%(asctime)s  %(levelname)-8s %(message)s')
-    log.setLevel(logging.DEBUG if args.debug else logging.INFO)
+
+    logFormat='%(asctime)s  %(levelname)-8s %(message)s'
+    logLevel = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=logLevel, format=logFormat, datefmt='%H:%M:%S')
+
     args.func(args)
