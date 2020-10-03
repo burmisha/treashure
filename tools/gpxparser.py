@@ -112,8 +112,8 @@ class FitParser(object):
                     longitude=self.__FromSemicircles(values['position_long']),
                     latitude=self.__FromSemicircles(values['position_lat']),
                     altitude=values['altitude'],
-                    cadence=values['cadence'],
-                    heartRate=values['heart_rate'],
+                    cadence=values.get('cadence') or None,
+                    heartRate=values.get('heart_rate') or None,
                     timestamp=timestamp,
                 ))
             except:
@@ -161,16 +161,20 @@ class GpxWriter(object):
                 elevation=point.Altitude,
                 time=point.GetDatetime(),
             )
-            if point.HeartRate:
-                # https://stackoverflow.com/questions/48795435/gpxpy-how-to-extract-heart-rate-data-from-gpx-file
-                # https://github.com/shaonianche/running-data-sync/blob/3d257799358e4d051cf9719af6ba0334aa414fdb/scripts/strava.py
-                gpx_extension_hr = ElementTree.fromstring(
-                    """<gpxtpx:TrackPointExtension xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
-                        <gpxtpx:hr>{}</gpxtpx:hr>
-                        </gpxtpx:TrackPointExtension>
-                    """.format(point.HeartRate)
-                )
-                gpxTrackPoint.extensions.append(gpx_extension_hr)
+            count = 0
+            namespace = '{gpxtpx}'
+            extensionElement = ElementTree.Element(namespace + 'TrackPointExtension')
+            for suffix, value in [
+                ('hr', point.HeartRate),
+                ('cad', point.Cadence),
+            ]:
+                if value:
+                    count += 1
+                    subElement = ElementTree.Element(namespace + suffix)
+                    subElement.text = str(value)
+                    extensionElement.insert(count, subElement)
+            if count:
+                gpxTrackPoint.extensions.append(extensionElement)
             self.__Points.append(gpxTrackPoint)
 
     def HasPoints(self):
@@ -182,6 +186,9 @@ class GpxWriter(object):
 
         log.debug('Create GPX')
         gpx = gpxpy.gpx.GPX()
+        gpx.nsmap = {
+            'gpxtpx': 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1',
+        }
 
         log.debug('Create first track in GPX')
         gpx_track = gpxpy.gpx.GPXTrack()

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import datetime
+import gpxparser
 import math
 import os
-import gpxparser
-import datetime
 
 import geopy
 import geopy.distance
@@ -13,8 +13,13 @@ import library
 import logging
 log = logging.getLogger(__name__)
 
+
 def tsToHr(timestamp, fmt='%Y-%m-%d %H:%M:%S'):
     return datetime.datetime.utcfromtimestamp(timestamp).strftime(fmt)
+
+
+def valueToStr(value, threshold=None):
+    return u'\u2591' * min(int(value), threshold) + u'\u2592' * max(max(int(value), threshold) - threshold, 0)
 
 
 def speed_to_pace(speed):
@@ -38,13 +43,26 @@ class Segment(object):
         self.Speed = 1000 * self.Distance / self.Duration  # meters per second
         assert self.Duration > 0
 
+    def __add__(self, that):
+        assert self.Second.Latitude == that.First.Latitude
+        assert self.Second.Longitude == that.First.Longitude
+        assert self.FinishTimestamp == that.StartTimestamp
+        return Segment(self.First, that.Second)
+
+    def WarningRating(self, averageSpeed):
+        rating = self.Speed / averageSpeed
+        if self.Duration == 1:
+            rating /= math.log(self.Duration + 1)
+        return rating
+
 
 class Track(object):
     def __init__(self, points, description=None, source_file=None):
         self.__Points = list(points)
         self.__Description = description or ''
         self.__SourceFile = source_file
-        self.__Patched = False
+        self.__OriginalDistance = None
+        self.__Patched = []
         self.__Init()
 
     def __Init(self):
@@ -66,8 +84,6 @@ class Track(object):
             if segment.Duration < 120:
                 self.__TotalDistance += segment.Distance
                 self.__TotalTime += segment.Duration
-                # print segment.Duration
-        # print self.__TotalDistance, self.__TotalTime
         self.__AverageSpeed = 1000 * self.__TotalDistance / self.__TotalTime
 
     def TotalDistance(self):
@@ -78,68 +94,69 @@ class Track(object):
         return self.__TotalDistance
 
     def Clean(self):
-        self.__BuildSegments()
-        self.__CalcStats()
         cleaned = True
         while cleaned:
-            speed_warnings = []
-            for index, segment in enumerate(self.__Segments):
-                rating = segment.Speed / self.__AverageSpeed
-                if segment.Duration == 1:
-                    rating /= math.log(segment.Duration + 1)
-                speed_warnings.append(rating)
-                log.debug(
-                    u'Speeds: %03d speed/avg: %.2f on %s: %s',
-                    index,
-                    rating,
-                    tsToHr(segment.FinishTimestamp),
-                    u'\u2591' * min(int(5 * rating), 15) + u'\u2592' * max(max(int(5 * rating), 15) - 15, 0),
-                )
-                
+            self.__BuildSegments()
+            self.__CalcStats()
+            cleaned = self.__Clean()
 
-            strange_count = sum(1 for w in speed_warnings if w >= 3)
-            if strange_count:
-                log.debug('%s: %d out of %d segments look strange', self.__Description, strange_count, len(speed_warnings))
-                cleaned = self.__Clean(speed_warnings)
-            else:
-                cleaned = False
-
-
-    def __Clean(self, segment_warnings):
-        assert len(segment_warnings) == len(self.__Segments) == len(self.__Points) - 1
-        if all(w <= 5 for w in segment_warnings):
-            log.debug('Nothing to clean: %s', max(segment_warnings))
-            return False
+    def __Clean(self):
+        assert len(self.__Segments) == len(self.__Points) - 1
+        if self.__OriginalDistance is None:
+            self.__OriginalDistance = self.TotalDistance()
 
         point_warnings = [False for _ in self.__Points]
+        log.debug('point ### \tprev_sp\tnext_sp\tp_durtn\tn_durtn\tp_dist\tn_dist\trating')
         for index, point in enumerate(self.__Points):
             has_warning = False
-            prev_segment_index = index - 1
-            next_segment_index = index
-            prev_segment = self.__Segments[prev_segment_index] if prev_segment_index >= 0 else None
-            next_segment = self.__Segments[next_segment_index] if next_segment_index < len(self.__Segments) else None
+            prev_segment = self.__Segments[index - 1] if index >= 1 else None
+            next_segment = self.__Segments[index] if index < len(self.__Segments) else None
 
-            if not prev_segment and segment_warnings[next_segment_index] >= 3:
+            if not prev_segment and next_segment.WarningRating(self.__AverageSpeed) >= 2:
                 has_warning = True
-            if not next_segment and segment_warnings[prev_segment_index] >= 3:
+            if not next_segment and prev_segment.WarningRating(self.__AverageSpeed) >= 2:
                 has_warning = True
             if prev_segment and next_segment:
-                log.debug('point %03d: %.2f, %.2f', index, prev_segment.Speed, next_segment.Speed)
-                if segment_warnings[next_segment_index] >= 3 and segment_warnings[prev_segment_index] >= 3:
+                joined_segment = prev_segment + next_segment
+                rating = (prev_segment.Distance + next_segment.Distance - joined_segment.Distance) / (prev_segment.Distance + next_segment.Distance)
+
+                if (
+                    rating >= 5
+                    or (
+                        prev_segment.WarningRating(self.__AverageSpeed) >= 3
+                        or next_segment.WarningRating(self.__AverageSpeed) >= 3
+                    )
+                ):
                     has_warning = True
 
-            if index <= 10 and segment_warnings[next_segment_index] >= 10:
+                log.debug(
+                    'point %03d:\t%.2f\t%.2f\t%d\t%d\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s%s',
+                    index,
+                    prev_segment.Speed,
+                    next_segment.Speed,
+                    prev_segment.Duration,
+                    next_segment.Duration,
+                    prev_segment.Distance * 1000,
+                    next_segment.Distance * 1000,
+                    prev_segment.WarningRating(self.__AverageSpeed),
+                    next_segment.WarningRating(self.__AverageSpeed),
+                    rating,
+                    valueToStr(rating * 50, 5),
+                    ' << deleting' if has_warning else '',
+                )
+
+            if index <= 10 and next_segment and next_segment.WarningRating(self.__AverageSpeed) >= 10:
+                log.debug('Cut early start errors')
                 for i in range(index):
                     point_warnings[i] = True
 
             point_warnings[index] = has_warning
 
         if not any(point_warnings):
-            log.warn('Could not clean')
             return False
         else:
             log.debug('Deleting %d points', sum(point_warnings))
-            self.__Patched = True
+            self.__Patched.append(sum(point_warnings))
 
         self.__Points = [point for point, warning in zip(self.__Points, point_warnings) if not warning]
         self.__Init()
@@ -152,7 +169,7 @@ class Track(object):
             track_type = 'running'
         else:
             track_type = 'other'
-        return u'Track %s: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s' % (
+        return u'Track %s: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
             self.__Description,
             tsToHr(self.__StartTimestamp, fmt='%Y-%m-%d %H:%M'),
             tsToHr(self.__FinishTimestamp, fmt='%H:%M'),
@@ -160,7 +177,8 @@ class Track(object):
             speed_to_pace(self.__AverageSpeed),
             self.__AverageSpeed,
             track_type,
-            ', patched' if self.__Patched else '',
+            ', patched %r' % self.__Patched if self.__Patched else '',
+            ' original was %.3f km' % self.__OriginalDistance if self.__Patched else '',
         )
 
     def IsPatched(self):
@@ -206,31 +224,26 @@ def analyze(args):
         track.Clean()
         log.info(u'%s', track)
 
+        patched_points = list(track.Points())
+
         if args.write and track.IsPatched():
-            patchedFile = track.SourceFilename().replace(
-                os.path.basename(track.SourceFilename()),
-                '%s_%s_patched.gpx' % (
-                    tsToHr(track.StartTimestamp(), fmt='%Y-%m-%d_%H-%M-%S'),
-                    os.path.basename(track.SourceFilename()).split('.')[0],
+            log.debug('Compare tracks at https://www.mygpsfiles.com/app/')
+            for points, suffix in [
+                (original_points, 'original'),
+                (patched_points, 'patched'),
+            ]:
+                filename = track.SourceFilename().replace(
+                    os.path.basename(track.SourceFilename()),
+                    '%s_%s_%s.gpx' % (
+                        tsToHr(track.StartTimestamp(), fmt='%Y-%m-%d_%H-%M-%S'),
+                        os.path.basename(track.SourceFilename()).split('.')[0],
+                        suffix,
+                    )
                 )
-            )
-            gpxWriter = gpxparser.GpxWriter()
-            gpxWriter.AddPoints(track.Points())
-            if gpxWriter.HasPoints():
-                gpxWriter.Save(patchedFile)
-
-            originalFile = track.SourceFilename().replace(
-                os.path.basename(track.SourceFilename()),
-                '%s_%s_original.gpx' % (
-                    tsToHr(track.StartTimestamp(), fmt='%Y-%m-%d_%H-%M-%S'),
-                    os.path.basename(track.SourceFilename()).split('.')[0],
-                )
-            )
-            gpxWriter = gpxparser.GpxWriter()
-            gpxWriter.AddPoints(original_points)
-            if gpxWriter.HasPoints():
-                gpxWriter.Save(originalFile)
-
+                gpxWriter = gpxparser.GpxWriter()
+                gpxWriter.AddPoints(points)
+                if gpxWriter.HasPoints():
+                    gpxWriter.Save(filename)
 
 
 def populate_parser(parser):
