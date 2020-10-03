@@ -67,13 +67,13 @@ def runImport(args):
     if args.open:
         if sourceFiles:
             log.info('Import new tracks manually')
-            md5sum.openDir(sourceFiles[0])
-            md5sum.openDir(getPathToOpen(dstPath, sourceFiles[0]))
+            library.files.open_dir(sourceFiles[0])
+            library.files.open_dir(getPathToOpen(dstPath, sourceFiles[0]))
             url = 'https://www.strava.com/upload/select'
             webbrowser.open(url, new=2)
         if deviceStats['success'] and deviceStats['success'] == deviceStats['total']:
             log.info('Clean tracks from device manually')
-            md5sum.openDir(srcPath)
+            library.files.open_dir(srcPath)
 
 
 def CreateArgumentsParser():

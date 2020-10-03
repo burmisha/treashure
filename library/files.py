@@ -29,3 +29,14 @@ def walk(dirname, extensions=[], dirsOnly=False):
                     yield os.path.join(root, filename)
 
     log.debug('Found %d %s in %s', count, logName, dirName)
+
+
+def open_dir(location):
+    # if os.path.isdir(dirname):
+    if os.path.exists(location):
+        if platform.system() == 'Darwin':
+            subprocess.call(['open', '-R', location])
+        else:
+            log.warn('Could not open location, only macOS is supported for now')
+    else:
+        raise RuntimeError('No location {!r}'.format(location))
