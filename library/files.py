@@ -1,12 +1,15 @@
 import os
+import platform
+import subprocess
 
 import logging
 log = logging.getLogger(__name__)
 
 
 class Location(object):
-    Dropbox = os.path.join(os.environ['HOME'], 'Dropbox')
-    YandexDisk = os.path.join(os.environ['HOME'], 'Yandex.Disk.localized')
+    Home = os.environ['HOME']
+    Dropbox = os.path.join(Home, 'Dropbox')
+    YandexDisk = os.path.join(Home, 'Yandex.Disk.localized')
 
 
 def walk(dirname, extensions=[], dirsOnly=False):
@@ -32,7 +35,6 @@ def walk(dirname, extensions=[], dirsOnly=False):
 
 
 def open_dir(location):
-    # if os.path.isdir(dirname):
     if os.path.exists(location):
         if platform.system() == 'Darwin':
             subprocess.call(['open', '-R', location])

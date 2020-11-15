@@ -4,6 +4,7 @@ import argparse
 import collections
 import datetime
 import os
+import shutil
 import time
 import webbrowser
 
@@ -17,7 +18,7 @@ log = logging.getLogger('treashure.garmin')
 def loadFitFiles(dirname):
     hashsums = {}
     for filename in library.files.walk(dirname, extensions=['.FIT']):
-        hashsums[tools.md5sum.Md5Sum(filename)] = filename
+        hashsums[library.md5sum.Md5Sum(filename)] = filename
     return hashsums
 
 
@@ -44,10 +45,10 @@ def runImport(args):
             time.sleep(sleepTime)
     processed = loadFitFiles(dstPath)
 
-    deviceStats = collections.defaultdict(int)
+    deviceStats = collections.Counter()
     sourceFiles = []
     for md5value, track in sorted(
-        onDevice.iteritems(),
+        onDevice.items(),
         key=lambda x: os.path.getmtime(x[1])
     ):
         sameImported = processed.get(md5value)
@@ -59,10 +60,22 @@ def runImport(args):
             log.warn('Broken name: %r -> %r', track, sameImported)
             deviceStats['broken_name'] += 1
         else:
-            log.info('Success: %r -> %r', track, sameImported)
+            log.debug('Success: %r -> %r', track, sameImported)
             deviceStats['success'] += 1
         deviceStats['total'] += 1
     log.info('Device files stats: %r', dict(deviceStats))
+
+    for src_file in sourceFiles:
+        fit_parser = tools.gpxparser.FitParser(src_file)
+        tools.speed.analyze_track(fit_parser)
+        ts = datetime.datetime.fromtimestamp(fit_parser.FirstTimestamp)
+        dst_file = os.path.basename(src_file)
+        dst_file = os.path.join(dstPath, ts.strftime('%Y'), ts.strftime('%F_%T_{}'.format(dst_file)).replace(':', '-'))
+        log.info('Copy %s -> %s', src_file, dst_file)
+        if args.copy:
+            shutil.copy(src_file, dst_file)
+        else:
+            log.info('Skipping copy')
 
     if args.open:
         if sourceFiles:
@@ -70,10 +83,17 @@ def runImport(args):
             library.files.open_dir(sourceFiles[0])
             library.files.open_dir(getPathToOpen(dstPath, sourceFiles[0]))
             url = 'https://www.strava.com/upload/select'
-            webbrowser.open(url, new=2)
-        if deviceStats['success'] and deviceStats['success'] == deviceStats['total']:
-            log.info('Clean tracks from device manually')
-            library.files.open_dir(srcPath)
+            controller = webbrowser.get(args.browser)
+            controller.open_new_tab(url)
+
+            if deviceStats['success'] and deviceStats['success'] == deviceStats['total']:
+                log.info('Clean tracks from device manually')
+                library.files.open_dir(srcPath)
+            else:
+                log.warn('Found errors')
+        else:
+            log.info('Nothing to open')
+
 
 
 def CreateArgumentsParser():
@@ -83,9 +103,11 @@ def CreateArgumentsParser():
     subparsers = parser.add_subparsers()
 
     importParser = subparsers.add_parser('import', help='Import tracks from device', formatter_class=formatter_class)
-    importParser.add_argument('--tracks', help='All tracks', default='/Volumes/Macintosh HD/Users/burmisha/Dropbox/running')
+    importParser.add_argument('--tracks', help='All tracks', default=os.path.join(library.files.Location.Dropbox, 'running'))
     importParser.add_argument('--garmin', help='Json file to store all data', default='/Volumes/GARMIN/GARMIN/ACTIVITY')
-    importParser.add_argument('--open', help='Open webbrowser and dirs', action='store_true')
+    importParser.add_argument('-o', '--open', help='Open webbrowser and dirs', action='store_true')
+    importParser.add_argument('-c', '--copy', help='Copy files in auto mode', action='store_true')
+    importParser.add_argument('--browser', help='Default browser to use', default='Firefox')
     importParser.set_defaults(func=runImport)
 
     joinParser = subparsers.add_parser('join', help='Join old tracks into one')

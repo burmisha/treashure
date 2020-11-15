@@ -194,6 +194,23 @@ class Track(object):
         return self.__Points
 
 
+
+def analyze_track(fit_track):
+    track = Track(
+        fit_track.Load(raise_on_error=False),
+        description=fit_track.Description(),
+        source_file=fit_track.Filename(),
+    )
+    original_points = list(track.Points())
+
+    track.Clean()
+    log.info(u'%s', track)
+
+    patched_points = list(track.Points())
+
+    return track, original_points, patched_points
+
+
 def analyze(args):
     files = []
     for year in range(2013, 2021):
@@ -213,21 +230,10 @@ def analyze(args):
 
     fitTracks.sort(key=lambda i: i.FirstTimestamp)
     for fitTrack in fitTracks:
-        track = Track(
-            fitTrack.Load(raise_on_error=False),
-            description=fitTrack.Description(),
-            source_file=fitTrack.Filename(),
-        )
-
-        original_points = list(track.Points())
-
-        track.Clean()
-        log.info(u'%s', track)
-
-        patched_points = list(track.Points())
+        track, original_points, patched_points = analyze_track(fitTrack)
 
         if args.write and track.IsPatched():
-            log.debug('Compare tracks at https://www.mygpsfiles.com/app/')
+            log.info('Compare tracks at https://www.mygpsfiles.com/app/')
             for points, suffix in [
                 (original_points, 'original'),
                 (patched_points, 'patched'),
