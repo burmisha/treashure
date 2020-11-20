@@ -40,8 +40,11 @@ class Segment(object):
         self.StartTimestamp = self.First.Timestamp
         self.FinishTimestamp = self.Second.Timestamp
         self.Duration = self.FinishTimestamp - self.StartTimestamp
-        self.Speed = 1000 * self.Distance / self.Duration  # meters per second
-        assert self.Duration > 0
+        if self.Duration > 0:
+            self.Speed = 1000 * self.Distance / self.Duration  # meters per second
+        else:
+            log.debug('Zero duration: %s at %s', 1000 * self.Distance, self.StartTimestamp)
+            self.Speed = 0
 
     def __add__(self, that):
         assert self.Second.Latitude == that.First.Latitude
@@ -163,7 +166,7 @@ class Track(object):
         return True
 
     def __str__(self):
-        if self.TotalDistance() >= 3 and self.__AverageSpeed >= 4:
+        if self.TotalDistance() >= 3 and 10 >= self.__AverageSpeed >= 4:
             track_type = 'cycling'
         elif self.__AverageSpeed <= 4:
             track_type = 'running'
@@ -177,8 +180,8 @@ class Track(object):
             speed_to_pace(self.__AverageSpeed),
             self.__AverageSpeed,
             track_type,
-            u', patched %r' % self.__Patched if self.__Patched else '',
-            u' original was %.3f km' % self.__OriginalDistance if self.__Patched else '',
+            u', patches size: %r' % self.__Patched if self.__Patched else '',
+            u', original distance: %.3f km' % self.__OriginalDistance if self.__Patched else '',
         )
 
     def IsPatched(self):
@@ -215,7 +218,7 @@ def analyze(args):
     files = []
     for year in range(2013, 2021):
         dirname = os.path.join(library.files.Location.Dropbox, 'running', str(year))
-        for file in library.files.walk(dirname, extensions=['FIT']):
+        for file in library.files.walk(dirname, extensions=['FIT', 'fit']):
             files.append(file)
 
     if args.filter:

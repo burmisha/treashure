@@ -1,5 +1,6 @@
 import os
 import datetime
+import pprint
 
 import fitparse
 import gpxpy
@@ -89,7 +90,12 @@ class FitParser(object):
         return float(value) * 180 / (2 ** 31)
 
     def __LoadPoints(self):
-        fitFile = fitparse.FitFile(self.__Filename)
+        log.debug('Loading %s', self.__Filename)
+        try:
+            fitFile = fitparse.FitFile(self.__Filename, check_crc=True)
+        except fitparse.utils.FitCRCError:
+            log.warning('FitCRCError on %s', self.__Filename)
+            fitFile = fitparse.FitFile(self.__Filename, check_crc=False)
         fitFile.parse()
 
         count = 0
@@ -105,7 +111,7 @@ class FitParser(object):
                 assert timestamp > 100000000
                 if 'enhanced_altitude' in values:
                     assert values['enhanced_altitude'] == values['altitude']
-                if 'position_long' not in values:
+                if values.get('position_long') is None or values.get('position_lat') is None:
                     failures.append(count)
                     continue
                 self.__Points.append(GeoPoint(
@@ -133,7 +139,7 @@ class FitParser(object):
                 failures[:3],
             )
         else:
-            log.info(
+            log.debug(
                 'File %s is %s: %d points', 
                 self.__Filename, 
                 'ok' if self.IsValid else 'not ok',
