@@ -127,7 +127,7 @@ class FitParser(object):
                 pprint.pprint(values)
                 raise
 
-        if len(failures) > 200 or len(failures) > 0.25 * count:
+        if len(failures) > 200 or len(failures) > 0.4 * count:
             self.IsValid = False
         if failures:
             log.info(

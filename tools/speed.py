@@ -71,8 +71,12 @@ class Track(object):
     def __Init(self):
         self.__TotalDistance = 0
         self.__TotalTime = 0
-        self.__StartTimestamp = self.__Points[0].Timestamp
-        self.__FinishTimestamp = self.__Points[-1].Timestamp
+        try:
+            self.__StartTimestamp = self.__Points[0].Timestamp
+            self.__FinishTimestamp = self.__Points[-1].Timestamp
+        except:
+            log.error('Failed on %s', self.__SourceFile)
+            raise
         self.__Segments = []
 
     def __BuildSegments(self):
@@ -216,7 +220,7 @@ def analyze_track(fit_track):
 
 def analyze(args):
     files = []
-    for year in range(2013, 2021):
+    for year in range(2013, 2022):
         dirname = os.path.join(library.files.Location.Dropbox, 'running', str(year))
         for file in library.files.walk(dirname, extensions=['FIT', 'fit']):
             files.append(file)
@@ -230,25 +234,24 @@ def analyze(args):
         fitParser = gpxparser.FitParser(file)
         if fitParser.IsValid:
             fitTracks.append(fitParser)
+        else:
+            log.info('fitParser for %s is not valid', file)
 
     fitTracks.sort(key=lambda i: i.FirstTimestamp)
     for fitTrack in fitTracks:
         track, original_points, patched_points = analyze_track(fitTrack)
-
+        log.debug('Track is patched: %s', track.IsPatched())
         if args.write and track.IsPatched():
             log.info('Compare tracks at https://www.mygpsfiles.com/app/')
             for points, suffix in [
                 (original_points, 'original'),
                 (patched_points, 'patched'),
             ]:
-                filename = track.SourceFilename().replace(
-                    os.path.basename(track.SourceFilename()),
-                    '%s_%s_%s.gpx' % (
-                        tsToHr(track.StartTimestamp(), fmt='%Y-%m-%d_%H-%M-%S'),
-                        os.path.basename(track.SourceFilename()).split('.')[0],
-                        suffix,
-                    )
-                )
+                parts = track.SourceFilename().split('.')
+                parts[-2] = parts[-2] + '_' + suffix
+                parts[-1] = 'gpx'
+                filename = '.'.join(parts)
+
                 gpxWriter = gpxparser.GpxWriter()
                 gpxWriter.AddPoints(points)
                 if gpxWriter.HasPoints():
