@@ -2,6 +2,9 @@ import os
 import datetime
 import pprint
 
+from typing import List, Optional
+
+
 import fitparse
 import gpxpy
 import gpxpy.gpx
@@ -9,7 +12,7 @@ import gpxpy.gpx
 from xml.etree import ElementTree
 
 import library
-
+import attr
 import logging
 log = logging.getLogger(__name__)
 
@@ -38,37 +41,32 @@ GPX_FOLDERS = [
 ]
 
 
+@attr.s
 class GeoPoint(object):
-    def __init__(
-        self,
-        longitude=None,
-        latitude=None,
-        altitude=None,
-        timestamp=None,
-        cadence=None,
-        heartRate=None
-    ):
-        self.Longitude = longitude
-        self.Latitude = latitude
-        self.Altitude = altitude
-        self.Timestamp = timestamp
-        self.Cadence = cadence
-        self.HeartRate = heartRate
+    longitude: float = attr.ib(default=None)
+    latitude: float = attr.ib(default=None)
+    altitude: Optional[float] = attr.ib(default=None)
+    timestamp: Optional[float] = attr.ib(default=None)
+    cadence: Optional[float] = attr.ib(default=None)
+    heart_rate: Optional[float] = attr.ib(default=None)
 
-    def GetDatetime(self):
-        return datetime.datetime.fromtimestamp(self.Timestamp)
-
-    def __repr__(self):
-        return str(self.__str__())
+    @property
+    def datetime(self):
+        return datetime.datetime.fromtimestamp(self.timestamp)
 
     def __str__(self):
         return {
-            'Lng': self.Longitude,
-            'Lat': self.Latitude,
-            'Alt': self.Altitude,
-            'Ts': self.Timestamp,
-            'Dt': self.GetDatetime(),
+            'Lng': self.longitude,
+            'Lat': self.latitude,
+            'Alt': self.altitude,
+            'Ts': self.timestamp,
+            'Dt': self.datetime,
         }
+
+
+class ErrorThreshold:
+    MIN_COUNT = 200
+    SHARE = 0.4
 
 
 class FitParser(object):
@@ -90,11 +88,11 @@ class FitParser(object):
         return float(value) * 180 / (2 ** 31)
 
     def __LoadPoints(self):
-        log.debug('Loading %s', self.__Filename)
+        log.debug(f'Loading {self.__Filename}')
         try:
             fitFile = fitparse.FitFile(self.__Filename, check_crc=True)
         except fitparse.utils.FitCRCError:
-            log.warning('FitCRCError on %s', self.__Filename)
+            log.warning(f'FitCRCError on {self.__Filename}', )
             fitFile = fitparse.FitFile(self.__Filename, check_crc=False)
         fitFile.parse()
 
@@ -106,7 +104,7 @@ class FitParser(object):
             if count == 1:
                 log.debug('First timestamp: %s', values['timestamp'])
                 self.FirstTimestamp = timestamp
-            log.debug('Values: %s', values)
+            log.debug(f'Values: {values}')
             try:
                 assert timestamp > 100000000
                 if 'enhanced_altitude' in values:
@@ -114,37 +112,31 @@ class FitParser(object):
                 if values.get('position_long') is None or values.get('position_lat') is None:
                     failures.append(count)
                     continue
-                self.__Points.append(GeoPoint(
+                geo_point = GeoPoint(
                     longitude=self.__FromSemicircles(values['position_long']),
                     latitude=self.__FromSemicircles(values['position_lat']),
                     altitude=values['altitude'],
                     cadence=values.get('cadence') or None,
-                    heartRate=values.get('heart_rate') or None,
+                    heart_rate=values.get('heart_rate') or None,
                     timestamp=timestamp,
-                ))
+                )
+                self.__Points.append(geo_point)
             except:
                 log.exception('Complete failure on %s in file %s', count, self.__Filename)
                 pprint.pprint(values)
                 raise
 
-        if len(failures) > 200 or len(failures) > 0.4 * count:
+        if len(failures) > ErrorThreshold.MIN_COUNT or len(failures) > ErrorThreshold.SHARE * count:
             self.IsValid = False
+
+        ok_str = 'ok' if self.IsValid else 'not ok'
         if failures:
             log.info(
-                'File %s is %s: %d points and %d failures, %r (3 first ones)', 
-                self.__Filename, 
-                'ok' if self.IsValid else 'not ok',
-                count,
-                len(failures),
-                failures[:3],
+                f'File {self.__Filename} is {ok_str}: {count} points '
+                f'and {len(failures)} failures, {failures[:3]} (3 first ones)', 
             )
         else:
-            log.debug(
-                'File %s is %s: %d points', 
-                self.__Filename, 
-                'ok' if self.IsValid else 'not ok',
-                count,
-            )
+            log.debug('File {self.__Filename} is {ok_str}: {count} points')
 
     def Load(self, raise_on_error=True):
         if raise_on_error and not self.IsValid:
@@ -217,9 +209,8 @@ class GpxWriter(object):
             f.write(self.ToXml())
 
 
-def joinTracks(source_files, resultFile):
-    log.info('Joining tracks %s to %s', source_files, resultFile)
-
+def join_tracks(source_files: List[str], resultFile: str):
+    log.info(f'Joining tracks {source_files} to {resultFile}',)
     gpxWriter = GpxWriter()
 
     for source_file in source_files:
@@ -233,14 +224,14 @@ def joinTracks(source_files, resultFile):
 def parseFit(args):
     location = args.location
     for dirname in GPX_FOLDERS:
-        log.info('Checking %s', dirname)
+        log.info(f'Checking {dirname}')
         assert os.path.basename(dirname) == dirname
-        resultFile = os.path.join(location, dirname, '{}-joined.gpx'.format(dirname))
+        resultFile = os.path.join(location, dirname, f'{dirname}-joined.gpx')
         if args.force or not os.path.exists(resultFile):
             source_files = list(library.files.walk(os.path.join(location, dirname), extensions=['.FIT']))
-            joinTracks(source_files, resultFile)
+            join_tracks(source_files, resultFile)
         else:
-            log.info('Skipping %s: result %s exists', dirname, resultFile)
+            log.info(f'Skipping {dirname}: result {resultFile} exists')
 
 
 def populate_parser(parser):

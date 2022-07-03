@@ -1,5 +1,5 @@
 import datetime
-import tools.gpxparser
+from tools import gpxparser
 import math
 import os
 
