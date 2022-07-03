@@ -1,5 +1,6 @@
 import datetime
-from tools import gpxparser
+from tools.fitreader import FitReader
+from tools.gpxwriter import GpxWriter
 import math
 import os
 
@@ -229,11 +230,11 @@ def analyze(args):
 
     fitTracks = []
     for file in files:
-        fitParser = gpxparser.FitParser(file)
-        if fitParser.IsValid:
-            fitTracks.append(fitParser)
+        fit_reader = FitReader(file)
+        if fit_reader.IsValid:
+            fitTracks.append(fit_reader)
         else:
-            log.info('fitParser for %s is not valid', file)
+            log.info('fit_reader for %s is not valid', file)
 
     fitTracks.sort(key=lambda i: i.FirstTimestamp)
     for fitTrack in fitTracks:
@@ -250,10 +251,10 @@ def analyze(args):
                 parts[-1] = 'gpx'
                 filename = '.'.join(parts)
 
-                gpxWriter = gpxparser.GpxWriter()
-                gpxWriter.AddPoints(points)
-                if gpxWriter.HasPoints():
-                    gpxWriter.Save(filename)
+                gpx_writer = GpxWriter()
+                gpx_writer.AddPoints(points)
+                if gpx_writer.HasPoints():
+                    gpx_writer.Save(filename)
 
 
 def populate_parser(parser):
