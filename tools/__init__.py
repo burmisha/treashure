@@ -1,2 +1,2 @@
-import gpxparser
-import speed
+import tools.gpxparser
+import tools.speed

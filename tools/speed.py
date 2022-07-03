@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
-
 import datetime
-import gpxparser
+import tools.gpxparser
 import math
 import os
 
