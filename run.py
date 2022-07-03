@@ -27,6 +27,9 @@ def CreateArgumentsParser():
     analyzeParser = subparsers.add_parser('analyze', help='Analyze files')
     tools.speed.populate_parser(analyzeParser)
 
+    tofmal_parser = subparsers.add_parser('tofmal', help='Download tofmal', formatter_class=formatter_class)
+    tools.tofmal.populate_parser(tofmal_parser)
+
     return parser
 
 

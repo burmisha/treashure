@@ -1,13 +1,9 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*- 
-
-import argparse
-import urllib2
+import requests
 import json
 import time
 
 # http://web.archive.org/web/20161026011307/http://tofmal.ru/?xclasses
-ALL_CLASSES=u'''
+ALL_CLASSES = '''
 2016а 2016б 2016в 2016г 2016ж 2016к 
 2015а 2015б 2015в 2015г 2015ж 2015к 
 2014а 2014б 2014в 2014ж 2014к 
@@ -38,20 +34,18 @@ ALL_CLASSES=u'''
 '''
 
 import logging
-log = logging.getLogger(__file__)
+log = logging.getLogger(__name__)
 
 
 def LoadClass(yearLetter):
-    log.info(u'Getting class %s', yearLetter)
-    url = urllib2.quote(yearLetter.encode('utf-8'))
-    response = urllib2.urlopen('http://tofmal.ru/?' + url)
-    html = response.read()
-    return html.decode('cp1251')
+    log.info(f'Getting class {yearLetter}', )
+    path = requests.utils.reqoute_url(yearLetter)
+    return requests.get(f'http://tofmal.ru/?{path}').decode('cp1251')
 
 
 def ParseHtml(html):
     for rawLine in html.replace('<div class=xpupil>', '\n').replace('</div></div>', '\n').split('\n'):
-        if 'whereDidLern' in rawLine and u'Ф.И.О.' not in rawLine:
+        if 'whereDidLern' in rawLine and 'Ф.И.О.' not in rawLine:
             line = rawLine.replace('<div class=name>', '').replace('</div><div class=medal>', '\t').replace('</div><div class=whereDidLern>', '\t').rstrip(' ')
             try:                
                 fio, flags, unversity = line.split('\t')
@@ -69,12 +63,10 @@ def ParseHtml(html):
             }
 
 
-def CreateArgumentsParser():
-    parser = argparse.ArgumentParser('Download tofmal', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--debug', help='Debug logging', action='store_true')
+def populate_parser(parser):
     parser.add_argument('--file', help='File to use', default='all.json')
     parser.add_argument('--mode', help='Mode', choices=['save', 'print'])
-    return parser
+    parser.set_defaults(func=main)
 
 
 def main(args):
@@ -82,7 +74,7 @@ def main(args):
     filename = args.file
     if mode == 'save':
         if os.path.exists(filename):
-            raise RuntimeError('File {!r} already exists, exiting'.format(filename))
+            raise RuntimeError(f'File {filename!r} already exists, exiting')
 
         yearLetters = ALL_CLASSES.split()
         yearLetters.sort()
@@ -106,12 +98,4 @@ def main(args):
             result = json.load(f)
         for year, people in result.iteritems():
             for person in people:
-                log.info(u'{}\t{}'.format(year, person['FIO']))
-
-
-if __name__ == '__main__':
-    parser = CreateArgumentsParser()
-    args = parser.parse_args()
-    logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s')
-    log.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    main(args)
+                log.info('{}\t{}'.format(year, person['FIO']))
