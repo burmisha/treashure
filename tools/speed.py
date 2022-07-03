@@ -1,5 +1,5 @@
 import datetime
-from tools.fitreader import FitReader
+from tools import fitreader
 from tools.gpxwriter import GpxWriter
 import math
 import os
@@ -203,11 +203,11 @@ class Track(object):
 
 def analyze_track(fit_track):
     track = Track(
-        fit_track.Load(raise_on_error=False),
+        fit_track.points,
         description=fit_track.description,
         source_file=fit_track.filename,
     )
-    original_points = list(track.Points())
+    original_points = fit_track.points
 
     track.Clean()
     log.info(u'%s', track)
@@ -230,13 +230,14 @@ def analyze(args):
 
     fitTracks = []
     for file in files:
-        fit_reader = FitReader(file)
-        if fit_reader.IsValid:
-            fitTracks.append(fit_reader)
+        track = fitreader.read_fit_file(file, raise_on_error=False)
+        if track.is_valid:
+            fitTracks.append(track)
+            log.info(f'Got {track}')
         else:
-            log.info(f'fit_reader for {file} is not valid')
+            log.error(f'Skipping {track}')
 
-    fitTracks.sort(key=lambda i: i.FirstTimestamp)
+    fitTracks.sort(key=lambda i: i.start_timestamp)
     for fitTrack in fitTracks:
         track, original_points, patched_points = analyze_track(fitTrack)
         log.debug(f'Track is patched: {track.IsPatched()}')

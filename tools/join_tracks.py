@@ -2,7 +2,7 @@ import os
 from typing import List
 
 from tools.gpxwriter import GpxWriter
-from tools.fitreader import FitReader
+from tools.fitreader import read_fit_file
 
 import library
 from tools.model import DEFAULT_TRACKS_LOCATION

@@ -4,92 +4,72 @@ import datetime
 import pprint
 import os
 
-from tools.model import GeoPoint
+from typing import Tuple, List
+from tools.model import GeoPoint, Track
 
 import logging
 log = logging.getLogger(__name__)
 
 
-class ErrorThreshold:
-    MIN_COUNT = 200
-    SHARE = 0.4
+def __from_semicircles(value):
+    # https://forums.garmin.com/forum/developers/garmin-developer-information/60220-
+    return float(value) * 180 / (2 ** 31)
 
 
-class FitReader(object):
-    def __init__(self, filename):
-        self.__Filename = filename
-        self.__Points = []
-        self.IsValid = True
-        self.FirstTimestamp = None
-        self.__load_oints()
+def get_points(filename, check_crc: bool) -> Tuple[List[GeoPoint], List[int]]:
+    points = []
+    failures = []
 
-    @property
-    def description(self):
-        return os.path.basename(self.__Filename)
-
-    @property
-    def filename(self):
-        return self.__Filename
-
-    def __FromSemicircles(self, value):
-        # https://forums.garmin.com/forum/developers/garmin-developer-information/60220-
-        return float(value) * 180 / (2 ** 31)
-
-    def __load_oints(self):
-        log.debug(f'Loading {self.__Filename}')
+    fit_file = fitparse.FitFile(filename, check_crc=check_crc)
+    for message_index, message in enumerate(fit_file.get_messages(name='record')):
+        values = message.get_values()
         try:
-            fitFile = fitparse.FitFile(self.__Filename, check_crc=True)
-        except fitparse.utils.FitCRCError:
-            log.warning(f'FitCRCError on {self.__Filename}', )
-            fitFile = fitparse.FitFile(self.__Filename, check_crc=False)
-        fitFile.parse()
-
-        count = 0
-        failures = []
-        for count, message in enumerate(fitFile.get_messages(name='record'), 1):
-            values = message.get_values()
             timestamp = int((values['timestamp'] - datetime.datetime(1970, 1, 1)).total_seconds())
-            if count == 1:
-                log.debug('First timestamp: %s', values['timestamp'])
-                self.FirstTimestamp = timestamp
-            log.debug(f'Values: {values}')
-            try:
-                assert timestamp > 100000000
-                if 'enhanced_altitude' in values:
-                    assert values['enhanced_altitude'] == values['altitude']
-                if values.get('position_long') is None or values.get('position_lat') is None:
-                    failures.append(count)
-                    continue
-                geo_point = GeoPoint(
-                    longitude=self.__FromSemicircles(values['position_long']),
-                    latitude=self.__FromSemicircles(values['position_lat']),
-                    altitude=values['altitude'],
-                    cadence=values.get('cadence') or None,
-                    heart_rate=values.get('heart_rate') or None,
-                    timestamp=timestamp,
-                )
-                self.__Points.append(geo_point)
-            except:
-                log.exception('Complete failure on %s in file %s', count, self.__Filename)
-                pprint.pprint(values)
-                raise
+            assert 1000000000 < timestamp < 2000000000
+            if 'enhanced_altitude' in values:
+                assert values['enhanced_altitude'] == values['altitude']
 
-        if len(failures) > ErrorThreshold.MIN_COUNT or len(failures) > ErrorThreshold.SHARE * count:
-            self.IsValid = False
+            longitude = values.get('position_long')
+            latitude = values.get('position_lat')
+            if longitude is None or latitude is None:
+                failures.append(message_index)
+                continue
 
-        ok_str = 'ok' if self.IsValid else 'not ok'
-        if failures:
-            log.info(
-                f'File {self.__Filename} is {ok_str}: {count} points '
-                f'and {len(failures)} failures, {failures[:3]} (3 first ones)', 
+            altitude = values['altitude']
+            assert altitude is not None
+
+            point = GeoPoint(
+                longitude=__from_semicircles(longitude),
+                latitude=__from_semicircles(latitude),
+                altitude=altitude,
+                cadence=values.get('cadence') or None,
+                heart_rate=values.get('heart_rate') or None,
+                timestamp=timestamp,
             )
-        else:
-            log.debug('File {self.__Filename} is {ok_str}: {count} points')
+            points.append(point)
+        except:
+            log.error(f'failed at {message_index}')
+            pprint.pprint(values)
+            raise
 
-    def Load(self, raise_on_error=True):
-        if raise_on_error and not self.IsValid:
-            log.error('Error')
-            raise RuntimeError('Too many failures')
+    return Track(
+        filename=filename,
+        points=points,
+        failures=failures,
+    )
 
-        for point in self.__Points:
-            yield point
+
+def read_fit_file(filename, raise_on_error=True) -> Track:
+    log.debug(f'Loading {filename}')
+    try:
+        track = get_points(filename, check_crc=True)
+        track.correct_crc = True
+    except fitparse.utils.FitCRCError:
+        log.debug(f'FitCRCError on {filename}')
+        track = get_points(filename, check_crc=False)
+        track.correct_crc = False
+
+    if raise_on_error and not track.is_valid:
+        log.error(f'{track!r}')
+        raise RuntimeError(f'{track} is invalid')
+    return track

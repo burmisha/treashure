@@ -12,13 +12,9 @@ import logging
 log = logging.getLogger(__name__)
 
 
-SYNC_LOCAL_DIR = os.path.join(library.files.Location.Dropbox, 'running')
-GARMIN_DEVICE_DIR = '/Volumes/GARMIN/GARMIN/Activity'
-
-
 def populate_parser(parser):
-    parser.add_argument('--tracks', help='All tracks', default=SYNC_LOCAL_DIR)
-    parser.add_argument('--garmin', help='Json file to store all data', default=GARMIN_DEVICE_DIR)
+    parser.add_argument('--tracks', help='All tracks', default=tools.model.SYNC_LOCAL_DIR)
+    parser.add_argument('--garmin', help='Json file to store all data', default=tools.model.GARMIN_DEVICE_DIR)
     parser.add_argument('-o', '--open', help='Open webbrowser and dir', action='store_true')
     parser.add_argument('-c', '--copy', help='Copy files in auto mode', action='store_true')
     parser.add_argument('-d', '--delete', help='Delete copied files', action='store_true')
@@ -32,7 +28,6 @@ def loadFitFiles(dirname):
     for filename in library.files.walk(dirname, extensions=['.FIT', '.fit']):
         hashsums[library.md5sum.Md5Sum(filename)] = filename
     return hashsums
-
 
 
 def runImport(args):
