@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 
 
 def LoadClass(yearLetter):
-    log.info(f'Getting class {yearLetter}', )
+    log.info(f'Getting class {yearLetter}')
     path = requests.utils.reqoute_url(yearLetter)
     return requests.get(f'http://tofmal.ru/?{path}').decode('cp1251')
 

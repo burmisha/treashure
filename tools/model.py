@@ -1,5 +1,8 @@
 from typing import List, Optional
 import attr
+import datetime
+import library
+import os
 
 @attr.s
 class GeoPoint(object):
@@ -22,3 +25,6 @@ class GeoPoint(object):
             'Ts': self.timestamp,
             'Dt': self.datetime,
         }
+
+
+DEFAULT_TRACKS_LOCATION = os.path.join(library.files.Location.Dropbox, 'running', 'tracks')

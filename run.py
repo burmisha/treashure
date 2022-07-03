@@ -12,22 +12,19 @@ log = logging.getLogger('treashure')
 
 def create_arguments_parser():
     formatter_class = argparse.ArgumentDefaultsHelpFormatter
-    parser = argparse.ArgumentParser('Check Garmin tracks', formatter_class=formatter_class)
+    parser = argparse.ArgumentParser('Common runner', formatter_class=formatter_class)
     parser.add_argument('--debug', help='Debug logging', action='store_true')
 
     subparsers = parser.add_subparsers()
 
-    import_parser = subparsers.add_parser('import', help='Import tracks from device', formatter_class=formatter_class)
-    tools.import_tracks.populate_parser(import_parser)
+    def add_subparser(cmd: str, desc: str, populate_func):
+        subparser = subparsers.add_parser(cmd, help=desc, formatter_class=formatter_class)
+        populate_func(subparser)
 
-    join_parser = subparsers.add_parser('join', help='Join old tracks into one')
-    tools.join_tracks.populate_parser(join_parser)
-
-    analyze_parser = subparsers.add_parser('analyze', help='Analyze files')
-    tools.speed.populate_parser(analyze_parser)
-
-    tofmal_parser = subparsers.add_parser('tofmal', help='Download tofmal', formatter_class=formatter_class)
-    tools.tofmal.populate_parser(tofmal_parser)
+    add_subparser('import', 'Import tracks from device', tools.import_tracks.populate_parser)
+    add_subparser('join', 'Join old tracks into one', tools.join_tracks.populate_parser)
+    add_subparser('analyze', 'Analyze files', tools.speed.populate_parser)
+    add_subparser('tofmal', 'Download tofmal', tools.tofmal.populate_parser)
 
     return parser
 

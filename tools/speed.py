@@ -33,11 +33,11 @@ class Segment(object):
         self.First = first
         self.Second = second
         self.Distance = geopy.distance.distance(
-            (self.First.Latitude, self.First.Longitude),
-            (self.Second.Latitude, self.Second.Longitude),
+            (self.First.latitude, self.First.longitude),
+            (self.Second.latitude, self.Second.longitude),
         ).km
-        self.StartTimestamp = self.First.Timestamp
-        self.FinishTimestamp = self.Second.Timestamp
+        self.StartTimestamp = self.First.timestamp
+        self.FinishTimestamp = self.Second.timestamp
         self.Duration = self.FinishTimestamp - self.StartTimestamp
         if self.Duration > 0:
             self.Speed = 1000 * self.Distance / self.Duration  # meters per second
@@ -46,8 +46,8 @@ class Segment(object):
             self.Speed = 0
 
     def __add__(self, that):
-        assert self.Second.Latitude == that.First.Latitude
-        assert self.Second.Longitude == that.First.Longitude
+        assert self.Second.latitude == that.First.latitude
+        assert self.Second.longitude == that.First.longitude
         assert self.FinishTimestamp == that.StartTimestamp
         return Segment(self.First, that.Second)
 
@@ -71,8 +71,8 @@ class Track(object):
         self.__TotalDistance = 0
         self.__TotalTime = 0
         try:
-            self.__StartTimestamp = self.__Points[0].Timestamp
-            self.__FinishTimestamp = self.__Points[-1].Timestamp
+            self.__StartTimestamp = self.__Points[0].timestamp
+            self.__FinishTimestamp = self.__Points[-1].timestamp
         except:
             log.error('Failed on %s', self.__SourceFile)
             raise
@@ -204,8 +204,8 @@ class Track(object):
 def analyze_track(fit_track):
     track = Track(
         fit_track.Load(raise_on_error=False),
-        description=fit_track.Description(),
-        source_file=fit_track.Filename(),
+        description=fit_track.description,
+        source_file=fit_track.filename,
     )
     original_points = list(track.Points())
 
@@ -226,7 +226,7 @@ def analyze(args):
 
     if args.filter:
         files = [f for f in files if args.filter in f]
-        log.info('Got %d files matching filter %s', len(files), args.filter)
+        log.info(f'Got {len(files)} files matching filter {args.filter}')
 
     fitTracks = []
     for file in files:
@@ -234,12 +234,12 @@ def analyze(args):
         if fit_reader.IsValid:
             fitTracks.append(fit_reader)
         else:
-            log.info('fit_reader for %s is not valid', file)
+            log.info(f'fit_reader for {file} is not valid')
 
     fitTracks.sort(key=lambda i: i.FirstTimestamp)
     for fitTrack in fitTracks:
         track, original_points, patched_points = analyze_track(fitTrack)
-        log.debug('Track is patched: %s', track.IsPatched())
+        log.debug(f'Track is patched: {track.IsPatched()}')
         if args.write and track.IsPatched():
             log.info('Compare tracks at https://www.mygpsfiles.com/app/')
             for points, suffix in [
@@ -249,12 +249,10 @@ def analyze(args):
                 parts = track.SourceFilename().split('.')
                 parts[-2] = parts[-2] + '_' + suffix
                 parts[-1] = 'gpx'
-                filename = '.'.join(parts)
-
-                gpx_writer = GpxWriter()
+                gpx_writer = GpxWriter('.'.join(parts))
                 gpx_writer.AddPoints(points)
                 if gpx_writer.HasPoints():
-                    gpx_writer.Save(filename)
+                    gpx_writer.Save()
 
 
 def populate_parser(parser):

@@ -1,24 +1,15 @@
 import os
-import datetime
-import pprint
-
-from typing import List, Optional
-
+from typing import List
 
 from tools.gpxwriter import GpxWriter
 from tools.fitreader import FitReader
 
-import fitparse
-import gpxpy
-
-from xml.etree import ElementTree
-
 import library
-import attr
+from tools.model import DEFAULT_TRACKS_LOCATION
+
 import logging
 log = logging.getLogger(__name__)
 
-DEFAULT_TRACKS_LOCATION = os.path.join(library.files.Location.Dropbox, 'running', 'tracks')
 
 GPX_FOLDERS = [
     '2014-05-Baltic',
@@ -43,53 +34,35 @@ GPX_FOLDERS = [
 ]
 
 
-@attr.s
-class GeoPoint(object):
-    longitude: float = attr.ib(default=None)
-    latitude: float = attr.ib(default=None)
-    altitude: Optional[float] = attr.ib(default=None)
-    timestamp: Optional[float] = attr.ib(default=None)
-    cadence: Optional[float] = attr.ib(default=None)
-    heart_rate: Optional[float] = attr.ib(default=None)
 
-    @property
-    def datetime(self):
-        return datetime.datetime.fromtimestamp(self.timestamp)
+def join_tracks(source_files: List[str], joined_file: str):
+    log.info(f'Joining tracks {source_files} to {joined_file}',)
 
-    def __str__(self):
-        return {
-            'Lng': self.longitude,
-            'Lat': self.latitude,
-            'Alt': self.altitude,
-            'Ts': self.timestamp,
-            'Dt': self.datetime,
-        }
-
-
-
-def join_tracks(source_files: List[str], resultFile: str):
-    log.info(f'Joining tracks {source_files} to {resultFile}',)
-    gpxWriter = GpxWriter()
-
+    gpxWriter = GpxWriter(joined_file)
     for source_file in source_files:
-        fitParser = FitParser(source_file)
-        gpxWriter.AddPoints(fitParser.Load())
+        fit_reader = FitReader(source_file)
+        gpxWriter.AddPoints(fit_reader.Load())
 
     if gpxWriter.HasPoints():
-        gpxWriter.Save(resultFile)
+        gpxWriter.Save()
 
 
 def run(args):
     location = args.location
     for dirname in GPX_FOLDERS:
-        log.info(f'Checking {dirname}')
         assert os.path.basename(dirname) == dirname
-        resultFile = os.path.join(location, dirname, f'{dirname}-joined.gpx')
-        if args.force or not os.path.exists(resultFile):
-            source_files = list(library.files.walk(os.path.join(location, dirname), extensions=['.FIT']))
-            join_tracks(source_files, resultFile)
-        else:
-            log.info(f'Skipping {dirname}: result {resultFile} exists')
+        joined_file = os.path.join(location, dirname, f'{dirname}-joined.gpx')
+        if os.path.exists(joined_file) and not args.force:
+            log.info(f'Skipping {dirname}: result {joined_file} exists')
+            continue
+
+        source_files = list(library.files.walk(os.path.join(location, dirname), extensions=['.FIT']))
+        if not source_files:
+            log.info(f'Skipping {joined_file} for {dirname}: might be gpx')
+            continue
+
+        log.info(f'Creating {joined_file} for {dirname}')
+        join_tracks(source_files, joined_file)
 
 
 def populate_parser(parser):

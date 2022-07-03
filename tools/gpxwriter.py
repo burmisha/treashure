@@ -1,24 +1,30 @@
+from xml.etree import ElementTree
 import gpxpy.gpx
+
+import logging
+log = logging.getLogger(__name__)
 
 
 class GpxWriter(object):
-    def __init__(self):
+    def __init__(self, filename: str):
         self.__Points = []
+        self.__filename = filename
+        assert self.__filename.endswith('.gpx')
 
     def AddPoints(self, points):
         for point in points:
             gpxTrackPoint = gpxpy.gpx.GPXTrackPoint(
-                latitude=point.Latitude,
-                longitude=point.Longitude,
-                elevation=point.Altitude,
-                time=point.GetDatetime(),
+                latitude=point.latitude,
+                longitude=point.longitude,
+                elevation=point.altitude,
+                time=point.datetime,
             )
             count = 0
             namespace = '{gpxtpx}'
             extensionElement = ElementTree.Element(namespace + 'TrackPointExtension')
             for suffix, value in [
-                ('hr', point.HeartRate),
-                ('cad', point.Cadence),
+                ('hr', point.heart_rate),
+                ('cad', point.cadence),
             ]:
                 if value:
                     count += 1
@@ -56,9 +62,9 @@ class GpxWriter(object):
 
         return gpx.to_xml()
 
-    def Save(self, filename):
+    def Save(self):
         assert self.__Points
-        log.info('Writing {} points to {}'.format(len(self.__Points), filename))
-        with open(filename, 'w') as f:
+        log.info(f'Writing {len(self.__Points)} points to {self.__filename}')
+        with open(self.__filename, 'w') as f:
             f.write(self.ToXml())
 

@@ -2,6 +2,7 @@ import fitparse
 import datetime
 
 import pprint
+import os
 
 from tools.model import GeoPoint
 
@@ -20,19 +21,21 @@ class FitReader(object):
         self.__Points = []
         self.IsValid = True
         self.FirstTimestamp = None
-        self.__LoadPoints()
+        self.__load_oints()
 
-    def Description(self):
+    @property
+    def description(self):
         return os.path.basename(self.__Filename)
 
-    def Filename(self):
+    @property
+    def filename(self):
         return self.__Filename
 
     def __FromSemicircles(self, value):
         # https://forums.garmin.com/forum/developers/garmin-developer-information/60220-
         return float(value) * 180 / (2 ** 31)
 
-    def __LoadPoints(self):
+    def __load_oints(self):
         log.debug(f'Loading {self.__Filename}')
         try:
             fitFile = fitparse.FitFile(self.__Filename, check_crc=True)
