@@ -4,7 +4,7 @@ import datetime
 import pprint
 import os
 
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from tools.model import GeoPoint, Track
 
 import logging
@@ -16,6 +16,34 @@ def __from_semicircles(value):
     return float(value) * 180 / (2 ** 31)
 
 
+def parse_values(values: dict) -> Optional[GeoPoint]:
+    timestamp = int((values['timestamp'] - datetime.datetime(1970, 1, 1)).total_seconds())
+    assert 1000000000 < timestamp < 2000000000
+    if 'enhanced_altitude' in values:
+        assert values['enhanced_altitude'] == values['altitude']
+
+    longitude = values.get('position_long')
+    latitude = values.get('position_lat')
+    if (longitude is None) or (latitude is None):
+        return None
+
+    altitude = values['altitude']
+    assert altitude is not None
+
+    longitude = __from_semicircles(longitude)
+    latitude = __from_semicircles(latitude)
+    point = GeoPoint(
+        longitude=float(f'{longitude:.9f}'),
+        latitude=float(f'{latitude:.9f}'),
+        altitude=float(f'{altitude:.3f}'),
+        cadence=values.get('cadence') or None,
+        heart_rate=values.get('heart_rate') or None,
+        timestamp=timestamp,
+    )
+    return point
+
+
+
 def get_points(filename, check_crc: bool) -> Tuple[List[GeoPoint], List[int]]:
     points = []
     failures = []
@@ -24,32 +52,13 @@ def get_points(filename, check_crc: bool) -> Tuple[List[GeoPoint], List[int]]:
     for message_index, message in enumerate(fit_file.get_messages(name='record')):
         values = message.get_values()
         try:
-            timestamp = int((values['timestamp'] - datetime.datetime(1970, 1, 1)).total_seconds())
-            assert 1000000000 < timestamp < 2000000000
-            if 'enhanced_altitude' in values:
-                assert values['enhanced_altitude'] == values['altitude']
-
-            longitude = values.get('position_long')
-            latitude = values.get('position_lat')
-            if longitude is None or latitude is None:
+            point = parse_values(values)
+            if point:
+                points.append(point)
+            else:
                 failures.append(message_index)
-                continue
-
-            altitude = values['altitude']
-            assert altitude is not None
-
-            point = GeoPoint(
-                longitude=__from_semicircles(longitude),
-                latitude=__from_semicircles(latitude),
-                altitude=altitude,
-                cadence=values.get('cadence') or None,
-                heart_rate=values.get('heart_rate') or None,
-                timestamp=timestamp,
-            )
-            points.append(point)
         except:
             log.error(f'failed at {message_index}')
-            pprint.pprint(values)
             raise
 
     return Track(

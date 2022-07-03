@@ -1,6 +1,7 @@
 import datetime
 from tools import fitreader
 from tools.gpxwriter import GpxWriter
+from tools import model
 import math
 import os
 
@@ -219,11 +220,20 @@ def analyze_track(fit_track):
 
 def analyze(args):
     files = []
+    dirnames = []
     for year in range(2013, 2022):
-        dirname = os.path.join(library.files.Location.Dropbox, 'running', str(year))
-        for file in library.files.walk(dirname, extensions=['FIT', 'fit']):
-            files.append(file)
+        dirname = os.path.join(model.SYNC_LOCAL_DIR, str(year))
+        dirnames.append(dirname)
 
+    if args.add_travel:
+        dirnames.append(model.DEFAULT_TRACKS_LOCATION)
+
+    log.info(f'Checking {dirnames}')
+    files = [
+        file
+        for d in dirnames
+        for file in library.files.walk(d, extensions=['.FIT', '.fit'])
+    ]
     if args.filter:
         files = [f for f in files if args.filter in f]
         log.info(f'Got {len(files)} files matching filter {args.filter}')
@@ -233,7 +243,7 @@ def analyze(args):
         track = fitreader.read_fit_file(file, raise_on_error=False)
         if track.is_valid:
             fitTracks.append(track)
-            log.info(f'Got {track}')
+            log.info(f'Got {track}, {track.points[0].yandex_maps_link}')
         else:
             log.error(f'Skipping {track}')
 
@@ -259,4 +269,5 @@ def analyze(args):
 def populate_parser(parser):
     parser.add_argument('--filter', help='Find files containg this substring')
     parser.add_argument('--write', help='Write patched files', action='store_true')
+    parser.add_argument('--add-travel', help='Add travel files', action='store_true')
     parser.set_defaults(func=analyze)

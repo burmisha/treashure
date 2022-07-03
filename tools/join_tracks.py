@@ -1,11 +1,10 @@
 import os
 from typing import List
 
-from tools.gpxwriter import GpxWriter
 from tools.fitreader import read_fit_file
-
-import library
+from tools.gpxwriter import GpxWriter
 from tools.model import DEFAULT_TRACKS_LOCATION
+import library
 
 import logging
 log = logging.getLogger(__name__)
@@ -40,8 +39,8 @@ def join_tracks(source_files: List[str], joined_file: str):
 
     gpxWriter = GpxWriter(joined_file)
     for source_file in source_files:
-        fit_reader = FitReader(source_file)
-        gpxWriter.AddPoints(fit_reader.Load())
+        track = read_fit_file(source_file)
+        gpxWriter.AddPoints(track.points)
 
     if gpxWriter.HasPoints():
         gpxWriter.Save()

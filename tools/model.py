@@ -17,14 +17,11 @@ class GeoPoint:
     def datetime(self):
         return datetime.datetime.fromtimestamp(self.timestamp)
 
-    def __str__(self):
-        return {
-            'Lng': self.longitude,
-            'Lat': self.latitude,
-            'Alt': self.altitude,
-            'Ts': self.timestamp,
-            'Dt': self.datetime,
-        }
+    @property
+    def yandex_maps_link(self):
+        text = f'{self.latitude}%2C{self.longitude}'
+        ll = f'{self.longitude}%2C{self.latitude}'
+        return f'https://yandex.ru/maps/?ll={ll}&mode=search&sll={ll}&text={text}&z=15'
 
 
 class ErrorThreshold:
