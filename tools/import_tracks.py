@@ -1,25 +1,38 @@
-#!/usr/bin/env python3
-
-import argparse
 import collections
 import datetime
+import library
 import os
 import shutil
 import time
 import webbrowser
 
 import tools
-import library
 
 import logging
-log = logging.getLogger('treashure.garmin')
+log = logging.getLogger(__name__)
+
+
+SYNC_LOCAL_DIR = os.path.join(library.files.Location.Dropbox, 'running')
+GARMIN_DEVICE_DIR = '/Volumes/GARMIN/GARMIN/Activity'
+
+
+def populate_parser(parser):
+    parser.add_argument('--tracks', help='All tracks', default=SYNC_LOCAL_DIR)
+    parser.add_argument('--garmin', help='Json file to store all data', default=GARMIN_DEVICE_DIR)
+    parser.add_argument('-o', '--open', help='Open webbrowser and dir', action='store_true')
+    parser.add_argument('-c', '--copy', help='Copy files in auto mode', action='store_true')
+    parser.add_argument('-d', '--delete', help='Delete copied files', action='store_true')
+    parser.add_argument('--browser', help='Default browser to use', default='Firefox')
+    parser.set_defaults(func=runImport)
+
 
 
 def loadFitFiles(dirname):
     hashsums = {}
-    for filename in library.files.walk(dirname, extensions=['.FIT']):
+    for filename in library.files.walk(dirname, extensions=['.FIT', '.fit']):
         hashsums[library.md5sum.Md5Sum(filename)] = filename
     return hashsums
+
 
 
 def runImport(args):
@@ -31,7 +44,7 @@ def runImport(args):
         onDevice = loadFitFiles(srcPath)
         sleepTime = 5
         if not onDevice:
-            log.info('Sleeping for %r seconds', sleepTime)
+            log.info(f'Sleeping for {sleepTime} seconds: no files in {srcPath}')
             time.sleep(sleepTime)
     processed = loadFitFiles(dstPath)
 
@@ -78,43 +91,3 @@ def runImport(args):
         log.info('Can delete %s', src_file)
         if args.delete:
             os.remove(src_file)
-
-
-def CreateArgumentsParser():
-    formatter_class = argparse.ArgumentDefaultsHelpFormatter
-    parser = argparse.ArgumentParser('Check Garmin tracks', formatter_class=formatter_class)
-    parser.add_argument('--debug', help='Debug logging', action='store_true')
-    subparsers = parser.add_subparsers()
-
-    importParser = subparsers.add_parser('import', help='Import tracks from device', formatter_class=formatter_class)
-    importParser.add_argument('--tracks', help='All tracks', default=os.path.join(library.files.Location.Dropbox, 'running'))
-    importParser.add_argument('--garmin', help='Json file to store all data', default='/Volumes/GARMIN/GARMIN/ACTIVITY')
-    importParser.add_argument('-o', '--open', help='Open webbrowser and dir', action='store_true')
-    importParser.add_argument('-c', '--copy', help='Copy files in auto mode', action='store_true')
-    importParser.add_argument('-d', '--delete', help='Delete copied files', action='store_true')
-    importParser.add_argument('--browser', help='Default browser to use', default='Firefox')
-    importParser.set_defaults(func=runImport)
-
-    joinParser = subparsers.add_parser('join', help='Join old tracks into one')
-    tools.gpxparser.populate_parser(joinParser)
-
-    analyzeParser = subparsers.add_parser('analyze', help='Analyze files')
-    tools.speed.populate_parser(analyzeParser)
-
-    return parser
-
-
-if __name__ == '__main__':
-    parser = CreateArgumentsParser()
-    args = parser.parse_args()
-
-    logFormat='%(asctime)s  %(levelname)-8s %(message)s'
-    logLevel = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=logLevel, format=logFormat, datefmt='%H:%M:%S')
-
-    start_time = time.time()
-    args.func(args)
-    finish_time = time.time()
-    duration = finish_time  - start_time
-    if duration >= 2:
-        log.info('Completed in %.2f seconds', duration)
