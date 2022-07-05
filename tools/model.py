@@ -25,7 +25,7 @@ class GeoPoint:
 
 
 class ErrorThreshold:
-    MIN_COUNT = 200
+    MIN_COUNT = 50
     SHARE = 0.9
 
 
@@ -37,8 +37,24 @@ class Track:
     correct_crc: Optional[bool] = attr.ib(default=None)
 
     @property
-    def start_timestamp(self):
-        return self.points[0].timestamp if self.points else 0
+    def start_timestamp(self) -> float:
+        return self.points[0].timestamp if self.points else 0.0
+
+    @property
+    def start_ts(self) -> datetime.datetime:
+        return datetime.datetime.fromtimestamp(self.start_timestamp)
+
+    @property
+    def canonic_basename(self):
+        basename = os.path.basename(self.filename)
+        start_ts = self.start_ts
+        date_str = start_ts.strftime('%F')
+        time_str = start_ts.strftime('%T').replace(':', '-')
+        if (date_str in basename) and (time_str in basename):
+            extension = basename.split('.')[-1]
+            return f'{date_str}_{time_str}.{extension}'
+        else:
+            return f'{date_str}_{time_str}_{basename}'
 
     @property
     def is_valid(self):

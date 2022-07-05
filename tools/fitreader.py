@@ -43,7 +43,6 @@ def parse_values(values: dict) -> Optional[GeoPoint]:
     return point
 
 
-
 def get_points(filename, check_crc: bool) -> Tuple[List[GeoPoint], List[int]]:
     points = []
     failures = []

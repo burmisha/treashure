@@ -33,7 +33,6 @@ GPX_FOLDERS = [
 ]
 
 
-
 def join_tracks(source_files: List[str], joined_file: str):
     log.info(f'Joining tracks {source_files} to {joined_file}',)
 

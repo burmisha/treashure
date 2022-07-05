@@ -23,25 +23,30 @@ def populate_parser(parser):
 
 
 
-def loadFitFiles(dirname):
-    hashsums = {}
-    for filename in library.files.walk(dirname, extensions=['.FIT', '.fit']):
-        hashsums[library.md5sum.Md5Sum(filename)] = filename
-    return hashsums
+def loadFitFiles(dirname) -> dict:
+    return {
+        library.md5sum.Md5Sum(filename): filename
+        for filename in library.files.walk(dirname, extensions=['.FIT', '.fit'])
+    }
+
+
+def load_device_files(source_dir: str, sleep_time: int = 5) -> dict:
+    onDevice = {}
+    while not onDevice:
+        onDevice = loadFitFiles(source_dir)
+        if onDevice:
+            return onDevice
+        else:
+            log.info(f'Sleeping for {sleep_time} seconds: no files in {source_dir}')
+            time.sleep(sleep_time)
 
 
 def runImport(args):
-    srcPath = args.garmin
-    dstPath = args.tracks
+    src_dir = args.garmin
+    dst_dir = args.tracks
 
-    onDevice = None
-    while not onDevice:
-        onDevice = loadFitFiles(srcPath)
-        sleepTime = 5
-        if not onDevice:
-            log.info(f'Sleeping for {sleepTime} seconds: no files in {srcPath}')
-            time.sleep(sleepTime)
-    processed = loadFitFiles(dstPath)
+    onDevice = load_device_files(src_dir)
+    processed = loadFitFiles(dst_dir)
 
     deviceStats = collections.Counter()
     latest_file = None
@@ -49,33 +54,31 @@ def runImport(args):
         onDevice.items(),
         key=lambda x: os.path.getmtime(x[1])
     ):
-        fit_parser = tools.gpxparser.FitParser(src_file)
-        tools.speed.analyze_track(fit_parser)
-        ts = datetime.datetime.fromtimestamp(fit_parser.FirstTimestamp)
-        dst_file = os.path.basename(src_file)
-        dst_file = os.path.join(dstPath, ts.strftime('%Y'), ts.strftime('%F_%T_{}'.format(dst_file)).replace(':', '-'))
+        track = tools.fitreader.read_fit_file(src_file)
+        tools.speed.analyze_track(track)
+        dst_file = os.path.join(dst_dir, track.start_ts.strftime('%Y'), track.canonic_basename)
         latest_file = dst_file
 
         sameImported = processed.get(md5value)
         if sameImported is None:
             deviceStats['not_imported'] += 1
-            log.info('Copy %s -> %s', src_file, dst_file)
+            log.info(f'Copy {src_file} -> {dst_file}')
             if args.copy:
                 shutil.copy(src_file, dst_file)
             else:
                 log.info('Skipping copy')
         else:
             if os.path.basename(src_file) not in os.path.basename(sameImported):
-                log.warn('Broken name: %r -> %r', src_file, sameImported)
+                log.warn(f'Broken name: {src_file} -> {sameImported}')
                 deviceStats['broken_name'] += 1
             else:
                 deviceStats['success'] += 1
-                log.debug('Success: %r -> %r', src_file, sameImported)            
+                log.debug(f'Success: {src_file} -> {sameImported}')
         deviceStats['total'] += 1
 
-    log.info('Device files stats: %r', dict(deviceStats))
+    log.info(f'Device files stats: {dict(deviceStats)}')
 
-    if args.open:
+    if args.open and latest_file:
         library.files.open_dir(latest_file)
         url = 'https://www.strava.com/upload/select'
         controller = webbrowser.get(args.browser)
@@ -83,6 +86,6 @@ def runImport(args):
 
     for md5value in sorted(set(onDevice) & set(processed)):
         src_file = onDevice[md5value]
-        log.info('Can delete %s', src_file)
+        log.info(f'Can delete {src_file}')
         if args.delete:
             os.remove(src_file)

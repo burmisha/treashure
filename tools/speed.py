@@ -125,7 +125,10 @@ class Track(object):
                 has_warning = True
             if prev_segment and next_segment:
                 joined_segment = prev_segment + next_segment
-                rating = (prev_segment.Distance + next_segment.Distance - joined_segment.Distance) / (prev_segment.Distance + next_segment.Distance)
+                if prev_segment.Distance > 0 or next_segment.Distance > 0:
+                    rating = (prev_segment.Distance + next_segment.Distance - joined_segment.Distance) / (prev_segment.Distance + next_segment.Distance)
+                else:
+                    rating = 0
 
                 if (
                     rating >= 5
