@@ -14,8 +14,16 @@ class GeoPoint:
     heart_rate: Optional[float] = attr.ib(default=None)
 
     @property
-    def datetime(self):
+    def datetime(self) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(self.timestamp)
+
+    @property
+    def long_lat(self) -> List[float]:
+        return [self.longitude, self.latitude]
+
+    @property
+    def lat_long(self) -> List[float]:
+        return [self.latitude, self.longitude]
 
     @property
     def yandex_maps_link(self):
