@@ -38,6 +38,8 @@ m = folium.Map(
     zoom_start=13,
     tiles='cartodb positron',
 )
+
+# m.fit_bounds([[52.193636, -2.221575], [52.636878, -1.139759]])
 start_marker = folium.Marker(track.points[0].lat_long, popup="start", tooltip="start of the track")
 finish_marker = folium.Marker(track.points[-1].lat_long, popup="finish", tooltip="finish of the track")
 start_marker.add_to(m)
