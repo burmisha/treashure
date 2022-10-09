@@ -3,6 +3,7 @@ import attr
 import datetime
 import library
 import os
+from functools import cached_property
 
 @attr.s
 class GeoPoint:
@@ -37,6 +38,9 @@ class ErrorThreshold:
     SHARE = 0.9
 
 
+VIEW_MARGIN = 0.01
+
+
 @attr.s
 class Track:
     filename: str = attr.ib()
@@ -58,8 +62,63 @@ class Track:
         return 0.0
 
     @property
+    def start_point(self) -> GeoPoint:
+        return self.points[0]
+
+    @property
+    def finish_point(self) -> GeoPoint:
+        return self.points[-1]
+
+    @property
     def start_ts(self) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(self.start_timestamp)
+
+    @cached_property
+    def max_lat(self) -> float:
+        return max(point.latitude for point in self.points)
+
+    @cached_property
+    def max_long(self) -> float:
+        return max(point.longitude for point in self.points)
+
+    @cached_property
+    def min_lat(self) -> float:
+        return min(point.latitude for point in self.points)
+
+    @cached_property
+    def min_long(self) -> float:
+        return min(point.longitude for point in self.points)
+
+    @cached_property
+    def min_long_view(self) -> float:
+        return self.min_long - (self.max_long - self.min_long) * VIEW_MARGIN
+
+    @cached_property
+    def max_long_view(self) -> float:
+        return self.max_long + (self.max_long - self.min_long) * VIEW_MARGIN
+
+    @cached_property
+    def min_lat_view(self) -> float:
+        return self.min_lat - (self.max_lat - self.min_lat) * VIEW_MARGIN
+
+    @cached_property
+    def max_lat_view(self) -> float:
+        return self.max_lat + (self.max_lat - self.min_lat) * VIEW_MARGIN
+
+    @cached_property
+    def middle_lat(self) -> float:
+        return (self.max_lat + self.min_lat) / 2
+
+    @cached_property
+    def middle_long(self) -> float:
+        return (self.max_long + self.min_long) / 2
+
+    @cached_property
+    def min_max_lat_long(self) -> List[List[float]]:
+        return [
+            [self.min_lat_view, self.min_long_view],
+            [self.max_lat_view, self.max_long_view],
+        ]
 
     @property
     def canonic_basename(self):

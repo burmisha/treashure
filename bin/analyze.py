@@ -27,23 +27,32 @@ with st.sidebar:
         sorted(files.keys()),
     )
 
+    track = fitreader.read_fit_file(files[track_name])
+    st.write('Start:', track.start_ts)
+
 
 st.write('Track file:', files[track_name])
 
-track = fitreader.read_fit_file(files[track_name])
-st.write('Start:', track.start_ts)
-
 m = folium.Map(
-    location=track.points[0].lat_long,
+    location=[track.middle_lat, track.middle_long],
     zoom_start=13,
-    tiles='cartodb positron',
+    tiles='cartodbpositron',
 )
+m.fit_bounds(track.min_max_lat_long)
 
-# m.fit_bounds([[52.193636, -2.221575], [52.636878, -1.139759]])
-start_marker = folium.Marker(track.points[0].lat_long, popup="start", tooltip="start of the track")
-finish_marker = folium.Marker(track.points[-1].lat_long, popup="finish", tooltip="finish of the track")
+start_marker = folium.Marker(
+    track.start_point.lat_long,
+    tooltip='start',
+    icon=folium.Icon(color='blue', icon='play'),
+)
 start_marker.add_to(m)
+finish_marker = folium.Marker(
+    track.finish_point.lat_long,
+    tooltip='finish',
+    icon=folium.Icon(color='green', icon='stop'),
+)
 finish_marker.add_to(m)
+
 for index, (seg_start, seg_finish) in enumerate(zip(track.points[:-1], track.points[1:])):
     color = '#11ffff' if index % 2 else '#ff11ff'
     pl = folium.vector_layers.PolyLine([seg_start.lat_long, seg_finish.lat_long], color=color)

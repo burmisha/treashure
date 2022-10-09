@@ -22,7 +22,7 @@ def valueToStr(value, threshold=None):
     return u'\u2591' * min(int(value), threshold) + u'\u2592' * max(max(int(value), threshold) - threshold, 0)
 
 
-def speed_to_pace(speed):
+def speed_to_pace(speed: float):
     pace = 1000. / speed
     minutes = int((pace + 0.5) / 60)
     seconds = int((pace + 0.5) - minutes * 60)
