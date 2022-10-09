@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 
 import streamlit as st
 from streamlit_folium import st_folium

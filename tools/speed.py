@@ -214,7 +214,6 @@ def analyze_track(fit_track):
     original_points = fit_track.points
 
     track.Clean()
-    log.info(u'%s', track)
 
     patched_points = list(track.Points())
 

@@ -1,91 +1,149 @@
-import collections
-import datetime
 import library
 import os
 import shutil
 import time
 import webbrowser
 
+from functools import cached_property
+from typing import Dict, List
+
+import attr
 import tools
 
 import logging
 log = logging.getLogger(__name__)
 
 
+DEFAULT_SLEEP_TIME = 5  # seconds
+DEFAULT_URL = 'https://www.strava.com/upload/select'
+DEFAULT_BROWSER = 'Firefox'
+
+
 def populate_parser(parser):
-    parser.add_argument('--tracks', help='All tracks', default=tools.model.SYNC_LOCAL_DIR)
-    parser.add_argument('--garmin', help='Json file to store all data', default=tools.model.GARMIN_DEVICE_DIR)
+    parser.add_argument('--tracks', help='Result tracks dirname', default=tools.model.SYNC_LOCAL_DIR)
+    parser.add_argument('--garmin', help='Garmin dirname', default=tools.model.GARMIN_DEVICE_DIR)
     parser.add_argument('-o', '--open', help='Open webbrowser and dir', action='store_true')
     parser.add_argument('-c', '--copy', help='Copy files in auto mode', action='store_true')
     parser.add_argument('-d', '--delete', help='Delete copied files', action='store_true')
-    parser.add_argument('--browser', help='Default browser to use', default='Firefox')
-    parser.set_defaults(func=runImport)
+    parser.add_argument('--browser', help='Default browser to use', default=DEFAULT_BROWSER)
+    parser.add_argument('--url', help='Default url to open', default=DEFAULT_URL)
+    parser.add_argument('--sleep-time', help='Seconds to wait before tries', type=int, default=DEFAULT_SLEEP_TIME)
+    parser.set_defaults(func=run_from_args)
 
 
+@attr.s
+class SrcFitFile:
+    filename: str = attr.ib()
 
-def loadFitFiles(dirname) -> dict:
-    return {
-        library.md5sum.Md5Sum(filename): filename
+    @cached_property
+    def md5sum(self) -> str:
+        return library.md5sum.Md5Sum(self.filename)
+
+    @cached_property
+    def mtime(self) -> str:
+        return os.path.getmtime(self.filename)
+
+
+def get_fit_files(dirname) -> List[SrcFitFile]:
+    return [
+        SrcFitFile(filename)
         for filename in library.files.walk(dirname, extensions=['.FIT', '.fit'])
-    }
+    ]
 
 
-def load_device_files(source_dir: str, sleep_time: int = 5) -> dict:
-    onDevice = {}
-    while not onDevice:
-        onDevice = loadFitFiles(source_dir)
-        if onDevice:
-            return onDevice
+def wait_fit_files(dirname: str, sleep_time: int) -> List[SrcFitFile]:
+    files = []
+    while not files:
+        files = get_fit_files(dirname)
+        if files:
+            return files
         else:
-            log.info(f'Sleeping for {sleep_time} seconds: no files in {source_dir}')
+            log.info(f'Sleeping for {sleep_time} seconds: no files in {dirname}')
             time.sleep(sleep_time)
 
 
-def runImport(args):
-    src_dir = args.garmin
-    dst_dir = args.tracks
+@attr.s
+class Stats:
+    copy: int = attr.ib(default=0)
+    skip_copy: int = attr.ib(default=0)
+    broken_name: int = attr.ib(default=0)
+    success: int = attr.ib(default=0)
+    total: int = attr.ib(default=0)
 
-    onDevice = load_device_files(src_dir)
-    processed = loadFitFiles(dst_dir)
 
-    deviceStats = collections.Counter()
-    latest_file = None
-    for md5value, src_file in sorted(
-        onDevice.items(),
-        key=lambda x: os.path.getmtime(x[1])
-    ):
-        track = tools.fitreader.read_fit_file(src_file)
-        tools.speed.analyze_track(track)
-        dst_file = os.path.join(dst_dir, track.start_ts.strftime('%Y'), track.canonic_basename)
-        latest_file = dst_file
+@attr.s
+class ImportConfig:
+    source_dir: str = attr.ib()
+    destination_dir: str = attr.ib()
+    sleep_time: int = attr.ib()
+    copy_files: bool = attr.ib()
+    delete_copied_files: bool = attr.ib()
 
-        sameImported = processed.get(md5value)
-        if sameImported is None:
-            deviceStats['not_imported'] += 1
-            log.info(f'Copy {src_file} -> {dst_file}')
-            if args.copy:
-                shutil.copy(src_file, dst_file)
+    open_browser: bool = attr.ib()
+    url: str = attr.ib()
+    browser: str = attr.ib()
+
+
+def run_from_args(args):
+    import_config = ImportConfig(
+        source_dir=args.garmin,
+        destination_dir=args.tracks,
+        sleep_time=args.sleep_time,
+        copy_files=args.copy,
+        delete_copied_files=args.delete,
+        open_browser=args.open,
+        url=args.url,
+        browser=args.browser,
+    )
+    run_import(import_config)
+
+
+def run_import(import_config: ImportConfig):
+    device_files = get_fit_files(import_config.source_dir)
+    processed_files = {
+        fit_file.md5sum: fit_file
+        for fit_file in wait_fit_files(import_config.destination_dir, sleep_time=import_config.sleep_time)
+    }
+
+    device_files.sort(key=lambda fit_file: fit_file.mtime)
+    for f in device_files:
+        f.md5sum  # cache
+
+    stats = Stats()
+    for src_file in device_files:
+        track = tools.fitreader.read_fit_file(src_file.filename, raise_on_error=False)
+        log.info(track)
+        # if track.is_valid:
+        #     tools.speed.analyze_track(track)
+        dst_file = os.path.join(import_config.destination_dir, track.start_ts.strftime('%Y'), track.canonic_basename)
+
+        imported_file = processed_files.get(src_file.md5sum)
+        if imported_file is None:
+            if import_config.copy_files:
+                stats.copy += 1
+                log.debug(f'Copy: {src_file.filename} -> {dst_file}')
+                shutil.copy(src_file.filename, dst_file)
             else:
-                log.info('Skipping copy')
+                stats.skip_copy += 1
+                log.debug(f'Skip copy: {src_file} -> {dst_file}')
         else:
-            if os.path.basename(src_file) not in os.path.basename(sameImported):
-                log.warn(f'Broken name: {src_file} -> {sameImported}')
-                deviceStats['broken_name'] += 1
+            if os.path.basename(src_file.filename) not in os.path.basename(imported_file.filename):
+                stats.broken_name += 1
+                log.warn(f'Broken name: {src_file} -> {imported_file.filename}')
             else:
-                deviceStats['success'] += 1
-                log.debug(f'Success: {src_file} -> {sameImported}')
-        deviceStats['total'] += 1
+                stats.success += 1
+                log.debug(f'Success: {src_file} -> {imported_file.filename}')
 
-    log.info(f'Device files stats: {dict(deviceStats)}')
+    stats.total = stats.copy + stats.skip_copy + stats.broken_name + stats.success
+    log.info(f'Device files stats: {stats}')
 
-    if args.open and latest_file:
-        library.files.open_dir(latest_file)
-        url = 'https://www.strava.com/upload/select'
-        controller = webbrowser.get(args.browser)
-        controller.open_new_tab(url)
+    if import_config.open_browser and device_files:
+        library.files.open_dir(device_files[-1].filename)
+        controller = webbrowser.get(import_config.browser)
+        controller.open_new_tab(import_config.url)
 
-    for md5value in sorted(set(onDevice) & set(processed)):
-        src_file = onDevice[md5value]
-        log.info(f'Can delete {src_file}')
-        if args.delete:
-            os.remove(src_file)
+    for fit_file in device_files:
+        if fit_file.md5sum in processed_files:
+            log.info(f'Can delete {fit_file}')
+            if import_config.delete_copied_files:
+                os.remove(fit_file.filename)

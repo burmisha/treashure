@@ -46,7 +46,16 @@ class Track:
 
     @property
     def start_timestamp(self) -> float:
-        return self.points[0].timestamp if self.points else 0.0
+        if self.points:
+            return self.points[0].timestamp
+        basename = os.path.basename(self.filename).split('.')[0]
+        try:
+            dt = datetime.datetime.strptime(basename, '%Y-%m-%d-%H-%M-%S')
+            return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
+        except ValueError:
+            return 0.0
+
+        return 0.0
 
     @property
     def start_ts(self) -> datetime.datetime:
@@ -83,7 +92,7 @@ class Track:
 
     @property
     def status(self) -> str:
-        msg = 'is ok' if self.is_valid else 'has many errors' 
+        msg = 'is ok' if self.is_valid else 'has many errors'
         if not self.correct_crc:
             msg += ' (with FitCRCError)'
         return msg
