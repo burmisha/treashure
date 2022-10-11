@@ -54,10 +54,19 @@ class Segment(object):
             return 1000 * self.distance / self.duration  # meters per second
         return 0
 
-    def warning_rating(self, average_speed) -> float:
-        rating = self.speed / average_speed
-        rating /= math.log(self.duration + 1)
-        return rating
+
+def speed_rating(segment: Segment, average_speed: float) -> float:
+    rating = segment.speed / average_speed
+    rating /= math.log(segment.duration + 1)
+    return rating
+
+
+def distance_rating(first: Segment, second: Segment) -> float:
+    joined = Segment(start=first.start, finish=second.finish)
+    if first.distance or second.distance:
+        return (first.distance + second.distance - joined.distance) / (first.distance + second.distance)
+    else:
+        return 0
 
 
 SEGMENT_DURATION_THRESHOLD = 120
@@ -140,32 +149,30 @@ def get_clean_track(track: CleanTrack) -> CleanTrack:
     return new_track
 
 
-def clean(track: CleanTrack):
+def clean(
+    track: CleanTrack,
+    one_side_speed=2,
+    both_side_speed=3,
+    distance_limit=5,
+):
     point_warnings = []
     log.debug('point ### \tprev_sp\tnext_sp\tp_durtn\tn_durtn\tp_dist\tn_dist\trating')
     for index, point in enumerate(track.points):
-        has_warning = False
         prev_segment = track.segments[index - 1] if index >= 1 else None
         next_segment = track.segments[index] if index < len(track.segments) else None
+        prev_speed_rating = speed_rating(prev_segment, track.average_speed) if prev_segment else 0
+        next_speed_rating = speed_rating(next_segment, track.average_speed) if next_segment else 0
 
-        if not prev_segment and next_segment.warning_rating(track.average_speed) >= 2:
-            has_warning = True
-        if not next_segment and prev_segment.warning_rating(track.average_speed) >= 2:
-            has_warning = True
-        if prev_segment and next_segment:
-            joined_segment = Segment(start=prev_segment.start, finish=next_segment.finish)
-            if prev_segment.distance > 0 or next_segment.distance > 0:
-                rating = (prev_segment.distance + next_segment.distance - joined_segment.distance) / (prev_segment.distance + next_segment.distance)
-            else:
-                rating = 0
-
-            if (
-                rating >= 5
-                or (
-                    prev_segment.warning_rating(track.average_speed) >= 3
-                    or next_segment.warning_rating(track.average_speed) >= 3
-                )
-            ):
+        has_warning = False
+        if not prev_segment:
+            if next_speed_rating >= one_side_speed:
+                has_warning = True
+        elif not next_segment:
+            if prev_speed_rating >= one_side_speed:
+                has_warning = True
+        else:
+            rating = distance_rating(prev_segment, next_segment)
+            if rating >= distance_limit or prev_speed_rating >= both_side_speed or next_speed_rating >= both_side_speed:
                 has_warning = True
 
             log.debug(
@@ -177,14 +184,14 @@ def clean(track: CleanTrack):
                 next_segment.duration,
                 prev_segment.distance * 1000,
                 next_segment.distance * 1000,
-                prev_segment.warning_rating(track.average_speed),
-                next_segment.warning_rating(track.average_speed),
+                prev_speed_rating,
+                next_speed_rating,
                 rating,
                 valueToStr(rating * 50, 5),
                 ' << deleting' if has_warning else '',
             )
 
-        if index <= 10 and next_segment and next_segment.warning_rating(track.average_speed) >= 10:
+        if index <= 10 and next_speed_rating >= 10:
             log.debug('Cut early start errors')
             for i in range(index):
                 point_warnings[i] = True
