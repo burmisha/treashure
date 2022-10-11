@@ -2,9 +2,11 @@ import datetime
 from tools import fitreader
 from tools.gpxwriter import GpxWriter
 from tools import model
+from functools import cached_property
 import math
 import os
 
+import attr
 import geopy
 import geopy.distance
 
@@ -13,13 +15,14 @@ import library
 import logging
 log = logging.getLogger(__name__)
 
+from typing import List
 
 def tsToHr(timestamp, fmt='%Y-%m-%d %H:%M:%S'):
     return datetime.datetime.utcfromtimestamp(timestamp).strftime(fmt)
 
 
 def valueToStr(value, threshold=None):
-    return u'\u2591' * min(int(value), threshold) + u'\u2592' * max(max(int(value), threshold) - threshold, 0)
+    return '\u2591' * min(int(value), threshold) + '\u2592' * max(max(int(value), threshold) - threshold, 0)
 
 
 def speed_to_pace(speed: float):
@@ -29,201 +32,194 @@ def speed_to_pace(speed: float):
     return '%d:%02d' % (minutes, seconds)
 
 
+@attr.s
 class Segment(object):
-    def __init__(self, first, second):
-        self.First = first
-        self.Second = second
-        self.Distance = geopy.distance.distance(
-            (self.First.latitude, self.First.longitude),
-            (self.Second.latitude, self.Second.longitude),
+    start: model.GeoPoint = attr.ib()
+    finish: model.GeoPoint = attr.ib()
+
+    @cached_property
+    def distance(self) -> float:
+        return geopy.distance.distance(
+            (self.start.latitude, self.start.longitude),
+            (self.finish.latitude, self.finish.longitude),
         ).km
-        self.StartTimestamp = self.First.timestamp
-        self.FinishTimestamp = self.Second.timestamp
-        self.Duration = self.FinishTimestamp - self.StartTimestamp
-        if self.Duration > 0:
-            self.Speed = 1000 * self.Distance / self.Duration  # meters per second
-        else:
-            log.debug('Zero duration: %s at %s', 1000 * self.Distance, self.StartTimestamp)
-            self.Speed = 0
 
-    def __add__(self, that):
-        assert self.Second.latitude == that.First.latitude
-        assert self.Second.longitude == that.First.longitude
-        assert self.FinishTimestamp == that.StartTimestamp
-        return Segment(self.First, that.Second)
+    @cached_property
+    def duration(self) -> float:
+        return self.finish.timestamp - self.start.timestamp
 
-    def WarningRating(self, averageSpeed):
-        rating = self.Speed / averageSpeed
-        if self.Duration == 1:
-            rating /= math.log(self.Duration + 1)
+    @cached_property
+    def speed(self) -> float:
+        if self.duration > 0:
+            return 1000 * self.distance / self.duration  # meters per second
+        return 0
+
+    def warning_rating(self, average_speed) -> float:
+        rating = self.speed / average_speed
+        rating /= math.log(self.duration + 1)
         return rating
 
 
-class Track(object):
-    def __init__(self, points, description=None, source_file=None):
-        self.__Points = list(points)
-        self.__Description = description or ''
-        self.__SourceFile = source_file
-        self.__OriginalDistance = None
-        self.__Patched = []
-        self.__Init()
+SEGMENT_DURATION_THRESHOLD = 120
 
-    def __Init(self):
-        self.__TotalDistance = 0
-        self.__TotalTime = 0
-        try:
-            self.__StartTimestamp = self.__Points[0].timestamp
-            self.__FinishTimestamp = self.__Points[-1].timestamp
-        except:
-            log.error('Failed on %s', self.__SourceFile)
-            raise
-        self.__Segments = []
 
-    def __BuildSegments(self):
-        if not self.__Segments:
-            for index in range(len(self.__Points) - 1):
-                segment = Segment(self.__Points[index], self.__Points[index + 1])
-                self.__Segments.append(segment)
+@attr.s
+class CleanTrack(object):
+    points: List[model.GeoPoint] = attr.ib()
+    description: str = attr.ib()
+    source_file: str = attr.ib()
 
-    def __CalcStats(self):
-        self.__BuildSegments()
-        for segment in self.__Segments:
-            if segment.Duration < 120:
-                self.__TotalDistance += segment.Distance
-                self.__TotalTime += segment.Duration
-        self.__AverageSpeed = 1000 * self.__TotalDistance / self.__TotalTime
+    original_distance: float = attr.field(default=0)
+    patches_count: int = attr.ib(default=0)
 
-    def TotalDistance(self):
-        if self.__TotalDistance:
-            return self.__TotalDistance
+    @cached_property
+    def segments(self):
+        segments = []
+        for index in range(len(self.points) - 1):
+            segment = Segment(self.points[index], self.points[index + 1])
+            if segment.duration >= SEGMENT_DURATION_THRESHOLD:
+                log.warning(f'Strange duration: {segment.duration}')
+            segments.append(segment)
+        return segments
 
-        self.__CalcStats()
-        return self.__TotalDistance
-
-    def Clean(self):
-        cleaned = True
-        while cleaned:
-            self.__BuildSegments()
-            self.__CalcStats()
-            cleaned = self.__Clean()
-
-    def __Clean(self):
-        assert len(self.__Segments) == len(self.__Points) - 1
-        if self.__OriginalDistance is None:
-            self.__OriginalDistance = self.TotalDistance()
-
-        point_warnings = [False for _ in self.__Points]
-        log.debug('point ### \tprev_sp\tnext_sp\tp_durtn\tn_durtn\tp_dist\tn_dist\trating')
-        for index, point in enumerate(self.__Points):
-            has_warning = False
-            prev_segment = self.__Segments[index - 1] if index >= 1 else None
-            next_segment = self.__Segments[index] if index < len(self.__Segments) else None
-
-            if not prev_segment and next_segment.WarningRating(self.__AverageSpeed) >= 2:
-                has_warning = True
-            if not next_segment and prev_segment.WarningRating(self.__AverageSpeed) >= 2:
-                has_warning = True
-            if prev_segment and next_segment:
-                joined_segment = prev_segment + next_segment
-                if prev_segment.Distance > 0 or next_segment.Distance > 0:
-                    rating = (prev_segment.Distance + next_segment.Distance - joined_segment.Distance) / (prev_segment.Distance + next_segment.Distance)
-                else:
-                    rating = 0
-
-                if (
-                    rating >= 5
-                    or (
-                        prev_segment.WarningRating(self.__AverageSpeed) >= 3
-                        or next_segment.WarningRating(self.__AverageSpeed) >= 3
-                    )
-                ):
-                    has_warning = True
-
-                log.debug(
-                    'point %03d:\t%.2f\t%.2f\t%d\t%d\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s%s',
-                    index,
-                    prev_segment.Speed,
-                    next_segment.Speed,
-                    prev_segment.Duration,
-                    next_segment.Duration,
-                    prev_segment.Distance * 1000,
-                    next_segment.Distance * 1000,
-                    prev_segment.WarningRating(self.__AverageSpeed),
-                    next_segment.WarningRating(self.__AverageSpeed),
-                    rating,
-                    valueToStr(rating * 50, 5),
-                    ' << deleting' if has_warning else '',
-                )
-
-            if index <= 10 and next_segment and next_segment.WarningRating(self.__AverageSpeed) >= 10:
-                log.debug('Cut early start errors')
-                for i in range(index):
-                    point_warnings[i] = True
-
-            point_warnings[index] = has_warning
-
-        if not any(point_warnings):
-            return False
-        else:
-            log.debug('Deleting %d points', sum(point_warnings))
-            self.__Patched.append(sum(point_warnings))
-
-        self.__Points = [point for point, warning in zip(self.__Points, point_warnings) if not warning]
-        self.__Init()
-        return True
-
-    def __str__(self):
-        if self.TotalDistance() >= 3 and 10 >= self.__AverageSpeed >= 4:
-            track_type = 'cycling'
-        elif self.__AverageSpeed <= 4:
-            track_type = 'running'
-        else:
-            track_type = 'other'
-        return u'Track %s: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
-            self.__Description,
-            tsToHr(self.__StartTimestamp, fmt='%Y-%m-%d %H:%M'),
-            tsToHr(self.__FinishTimestamp, fmt='%H:%M'),
-            self.TotalDistance(),
-            speed_to_pace(self.__AverageSpeed),
-            self.__AverageSpeed,
-            track_type,
-            u', patches size: %r' % self.__Patched if self.__Patched else '',
-            u', original distance: %.3f km' % self.__OriginalDistance if self.__Patched else '',
+    @cached_property
+    def total_distance(self):
+        return sum(
+            segment.distance
+            for segment in self.segments 
+            if segment.duration < SEGMENT_DURATION_THRESHOLD
         )
 
-    def IsPatched(self):
-        return self.__Patched
+    @cached_property
+    def total_duration(self):
+        return sum(
+            segment.duration
+            for segment in self.segments 
+            if segment.duration < SEGMENT_DURATION_THRESHOLD
+        )
 
-    def SourceFilename(self):
-        return self.__SourceFile
+    @cached_property
+    def average_speed(self):
+        return 1000 * self.total_distance / self.total_duration
 
-    def StartTimestamp(self):
-        return self.__StartTimestamp
+    @property
+    def start_timestamp(self):
+        return self.points[0].timestamp
 
-    def Points(self):
-        return self.__Points
+    @property
+    def track_type(self) -> str:
+        if self.total_distance >= 3 and 10 >= self.average_speed >= 4:
+            return 'cycling'
+        elif self.average_speed <= 4:
+            return 'running'
+        else:
+            return 'other'
+
+    def __str__(self):
+        return 'Track %s: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
+            self.description,
+            tsToHr(self.points[0].timestamp, fmt='%Y-%m-%d %H:%M'),
+            tsToHr(self.points[-1].timestamp, fmt='%H:%M'),
+            self.TotalDistance(),
+            speed_to_pace(self.average_speed),
+            self.average_speed,
+            self.track_type,
+            f', patches count: {self.patches_count}'if self.patches_count else '',
+            f', original distance: {self.original_distance:.3f} km' if self.patches_count else '',
+        )
 
 
 
-def analyze_track(fit_track):
-    track = Track(
+def get_clean_track(track: CleanTrack) -> CleanTrack:
+    track_copy = track
+    new_track = None
+    while not new_track or new_track.patches_count:
+        new_track = clean(track_copy)
+        track_copy = new_track
+
+    return new_track
+
+
+def clean(track: CleanTrack):
+    point_warnings = []
+    log.debug('point ### \tprev_sp\tnext_sp\tp_durtn\tn_durtn\tp_dist\tn_dist\trating')
+    for index, point in enumerate(track.points):
+        has_warning = False
+        prev_segment = track.segments[index - 1] if index >= 1 else None
+        next_segment = track.segments[index] if index < len(track.segments) else None
+
+        if not prev_segment and next_segment.warning_rating(track.average_speed) >= 2:
+            has_warning = True
+        if not next_segment and prev_segment.warning_rating(track.average_speed) >= 2:
+            has_warning = True
+        if prev_segment and next_segment:
+            joined_segment = Segment(start=prev_segment.start, finish=next_segment.finish)
+            if prev_segment.distance > 0 or next_segment.distance > 0:
+                rating = (prev_segment.distance + next_segment.distance - joined_segment.distance) / (prev_segment.distance + next_segment.distance)
+            else:
+                rating = 0
+
+            if (
+                rating >= 5
+                or (
+                    prev_segment.warning_rating(track.average_speed) >= 3
+                    or next_segment.warning_rating(track.average_speed) >= 3
+                )
+            ):
+                has_warning = True
+
+            log.debug(
+                'point %03d:\t%.2f\t%.2f\t%d\t%d\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s%s',
+                index,
+                prev_segment.speed,
+                next_segment.speed,
+                prev_segment.duration,
+                next_segment.duration,
+                prev_segment.distance * 1000,
+                next_segment.distance * 1000,
+                prev_segment.warning_rating(track.average_speed),
+                next_segment.warning_rating(track.average_speed),
+                rating,
+                valueToStr(rating * 50, 5),
+                ' << deleting' if has_warning else '',
+            )
+
+        if index <= 10 and next_segment and next_segment.warning_rating(track.average_speed) >= 10:
+            log.debug('Cut early start errors')
+            for i in range(index):
+                point_warnings[i] = True
+
+        point_warnings.append(has_warning)
+
+    points = [
+        point
+        for point, warning in zip(track.points, point_warnings)
+        if not warning
+    ]
+    return CleanTrack(
+        points=points,
+        description=track.description,
+        source_file=track.source_file,
+        original_distance=track.original_distance,
+        patches_count=track.patches_count + len(track.points) - len(points),
+    )
+
+
+def analyze_track(fit_track: model.Track):
+    original_track = CleanTrack(
         fit_track.points,
         description=fit_track.description,
         source_file=fit_track.filename,
     )
-    original_points = fit_track.points
+    clean_track = get_clean_track(original_track)
 
-    track.Clean()
-
-    patched_points = list(track.Points())
-
-    return track, original_points, patched_points
+    return original_track, clean_track
 
 
 def analyze(args):
     files = []
     dirnames = []
-    for year in range(2013, 2022):
+    for year in range(2013, 2023):
         dirname = os.path.join(model.SYNC_LOCAL_DIR, str(year))
         dirnames.append(dirname)
 
@@ -240,32 +236,35 @@ def analyze(args):
         files = [f for f in files if args.filter in f]
         log.info(f'Got {len(files)} files matching filter {args.filter}')
 
-    fitTracks = []
+    fit_tracks = []
     for file in files:
         track = fitreader.read_fit_file(file, raise_on_error=False)
         if track.is_valid:
-            fitTracks.append(track)
+            fit_tracks.append(track)
             log.info(f'Got {track}, {track.points[0].yandex_maps_link}')
         else:
             log.error(f'Skipping {track}')
 
-    fitTracks.sort(key=lambda i: i.start_timestamp)
-    for fitTrack in fitTracks:
-        track, original_points, patched_points = analyze_track(fitTrack)
-        log.debug(f'Track is patched: {track.IsPatched()}')
-        if args.write and track.IsPatched():
+    fit_tracks.sort(key=lambda track: track.start_timestamp)
+    for fitTrack in fit_tracks:
+        original_track, clean_track = analyze_track(fitTrack)
+        if args.write and (clean_track.patches_count > 0):
             log.info('Compare tracks at https://www.mygpsfiles.com/app/')
             for points, suffix in [
-                (original_points, 'original'),
-                (patched_points, 'patched'),
+                (original_track.points, 'original'),
+                (clean_track.points, 'patched'),
             ]:
-                parts = track.SourceFilename().split('.')
+                parts = original_track.source_file.split('.')
                 parts[-2] = parts[-2] + '_' + suffix
                 parts[-1] = 'gpx'
-                gpx_writer = GpxWriter('.'.join(parts))
+                filename = '.'.join(parts)
+                gpx_writer = GpxWriter(filename)
                 gpx_writer.AddPoints(points)
                 if gpx_writer.HasPoints():
                     gpx_writer.Save()
+                else:
+                    log.info(f'No points to save: {filename}')
+
 
 
 def populate_parser(parser):
