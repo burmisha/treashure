@@ -165,7 +165,7 @@ def clean(
     distance_limit=5,
 ) -> CleanTrack:
     is_ok = []
-    log.info('\t'.join([
+    log.debug('\t'.join([
         'point ### ',
         'prev_sp',
         'next_sp',
@@ -195,7 +195,7 @@ def clean(
             if rating >= distance_limit or prev_speed_rating >= both_side_speed or next_speed_rating >= both_side_speed:
                 point_is_ok = False
 
-            log.info(
+            log.debug(
                 'point %03d:\t%.2f\t%.2f\t%d\t%d\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s%s',
                 index,
                 prev_segment.speed,
@@ -235,39 +235,51 @@ def analyze_track(track: model.Track) -> CleanTrack:
     return new_track
 
 
-def analyze(args):
-    files = []
-    dirnames = []
-    for year in range(2013, 2023):
-        dirname = os.path.join(model.SYNC_LOCAL_DIR, str(year))
-        dirnames.append(dirname)
-
-    if args.add_travel:
-        dirnames.append(model.DEFAULT_TRACKS_LOCATION)
-
+def get_filenames(dirnames: List[str], flt):
     log.info(f'Checking {dirnames}')
     files = [
         file
         for d in dirnames
         for file in library.files.walk(d, extensions=['.FIT', '.fit'])
     ]
-    if args.filter:
-        files = [f for f in files if args.filter in f]
-        log.info(f'Got {len(files)} files matching filter {args.filter}')
+    files.sort()
+    if flt:
+        for filename in files:
+            if flt in filename:
+                yield filename
+    else:
+        for filename in files:
+            yield filename
 
-    tracks = []
-    for file in files:
-        track = fitreader.read_fit_file(file, raise_on_error=False)
-        if track.is_valid:
-            tracks.append(track)
-            log.info(f'Got {track}, {track.points[0].yandex_maps_link}')
-        else:
-            log.error(f'Skipping {track}')
 
+def get_dirnames(add_travel: bool) -> List[str]:
+    dirnames = []
+    for year in range(2013, 2023):
+        dirname = os.path.join(model.SYNC_LOCAL_DIR, str(year))
+        dirnames.append(dirname)
+
+    if add_travel:
+        dirnames.append(model.DEFAULT_TRACKS_LOCATION)
+
+    return dirnames
+
+
+def analyze(args):
+    dirnames = get_dirnames(args.add_travel)
+    filenames = get_filenames(dirnames, args.filter)
+    tracks = [
+        fitreader.read_fit_file(filename, raise_on_error=False)
+        for filename in filenames
+    ]
     tracks.sort(key=lambda track: track.start_timestamp)
+
     for track in tracks:
+        if not track.is_valid:
+            log.error(f'Skipping {track}')
+            continue
+        log.info(track)
         clean_track = analyze_track(track)
-        log.info(f'{clean_track}')
+        log.info(clean_track)
         # if args.write and (clean_track.patches_count > 0):
         #     log.info('Compare tracks at https://www.mygpsfiles.com/app/')
         #     for points, suffix in [

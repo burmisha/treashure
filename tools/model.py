@@ -4,6 +4,7 @@ import datetime
 import library
 import os
 from functools import cached_property
+import re
 
 @attr.s
 class GeoPoint:
@@ -120,17 +121,36 @@ class Track:
             [self.max_lat_view, self.max_long_view],
         ]
 
-    @property
+    @cached_property
+    def basename(self):
+        return os.path.basename(self.filename)
+
+    @cached_property
+    def canonic_filename(self):
+        return os.path.join(os.path.dirname(self.filename), self.canonic_basename)
+
+    @cached_property
     def canonic_basename(self):
-        basename = os.path.basename(self.filename)
-        start_ts = self.start_ts
-        date_str = start_ts.strftime('%F')
-        time_str = start_ts.strftime('%T').replace(':', '-')
-        if (date_str in basename) and (time_str in basename):
-            extension = basename.split('.')[-1]
-            return f'{date_str}_{time_str}.{extension}'
+        basename, extension = self.basename.split('.')
+        basename = basename.replace(' ', '-').replace('--', '-').replace('--', '-')
+        assert extension.upper() == 'FIT'
+        date_str = self.start_ts.strftime('%Y-%m-%d-%H-%M-%S')
+        if re.match(r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\w{8}$', basename):
+            new_basename = basename.replace('_', '-', 1)
+        elif re.match(r'^\d{4}-\d{2}-\d{2}[-_]\d{2}-\d{2}-\d{2}$', basename):
+            new_basename = basename.replace('_', '-')
+        elif re.match(r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$', basename):
+            new_basename = basename[20:]
+        elif re.match(r'^\w{8}$', basename):
+            new_basename = f'{date_str}_{basename.upper()}'
+        elif re.match(r'^\w{8}-\w+$', basename):
+            parts = basename.split('-')
+            parts[0] = parts[0].upper()
+            new_basename = f'{date_str}_' + '-'.join(parts)
         else:
-            return f'{date_str}_{time_str}_{basename}'
+            raise RuntimeError(f'Invalid {basename} for {self}')
+
+        return f'{new_basename}.FIT'
 
     @property
     def is_valid(self):
