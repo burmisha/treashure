@@ -17,15 +17,15 @@ log = logging.getLogger(__name__)
 
 from typing import List
 
-def tsToHr(timestamp, fmt='%Y-%m-%d %H:%M:%S'):
+def tsToHr(timestamp, fmt='%Y-%m-%d %H:%M:%S') -> str:
     return datetime.datetime.utcfromtimestamp(timestamp).strftime(fmt)
 
 
-def valueToStr(value, threshold=None):
+def valueToStr(value, threshold=None) -> str:
     return '\u2591' * min(int(value), threshold) + '\u2592' * max(max(int(value), threshold) - threshold, 0)
 
 
-def speed_to_pace(speed: float):
+def speed_to_pace(speed: float) -> str:
     pace = 1000. / speed
     minutes = int((pace + 0.5) / 60)
     seconds = int((pace + 0.5) - minutes * 60)
@@ -74,22 +74,40 @@ SEGMENT_DURATION_THRESHOLD = 120
 
 @attr.s
 class CleanTrack(object):
-    points: List[model.GeoPoint] = attr.ib()
-    description: str = attr.ib()
-    source_file: str = attr.ib()
-
-    original_distance: float = attr.field(default=0)
-    patches_count: int = attr.ib(default=0)
+    track: model.Track = attr.ib()
+    is_ok: List[bool] = attr.ib()
 
     @cached_property
-    def segments(self):
+    def clean_points(self) -> List[model.GeoPoint]:
+        return [
+            point
+            for point, point_is_ok in zip(self.track.points, self.is_ok)
+            if point_is_ok
+        ]
+
+    @cached_property
+    def segments(self) -> List[Segment]:
+        clean_points = self.clean_points
         segments = []
-        for index in range(len(self.points) - 1):
-            segment = Segment(self.points[index], self.points[index + 1])
+        for index in range(len(clean_points) - 1):
+            segment = Segment(clean_points[index], clean_points[index + 1])
             if segment.duration >= SEGMENT_DURATION_THRESHOLD:
                 log.warning(f'Strange duration: {segment.duration}')
             segments.append(segment)
         return segments
+
+    @cached_property
+    def original_distance(self) -> float:
+        points = self.track.points
+        segments = [
+            Segment(points[index], points[index + 1])
+            for index in range(len(points) - 1)
+        ]
+        return sum(segment.distance for segment in segments)
+
+    @cached_property
+    def patches_count(self) -> int:
+        return len([1 for point_is_ok in self.is_ok if not point_is_ok])
 
     @cached_property
     def total_distance(self):
@@ -109,7 +127,10 @@ class CleanTrack(object):
 
     @cached_property
     def average_speed(self):
-        return 1000 * self.total_distance / self.total_duration
+        if self.total_duration > 0:
+            return 1000 * self.total_distance / self.total_duration
+        else:
+            return 0
 
     @property
     def start_timestamp(self):
@@ -125,57 +146,56 @@ class CleanTrack(object):
             return 'other'
 
     def __str__(self):
-        return 'Track %s: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
-            self.description,
-            tsToHr(self.points[0].timestamp, fmt='%Y-%m-%d %H:%M'),
-            tsToHr(self.points[-1].timestamp, fmt='%H:%M'),
-            self.TotalDistance(),
+        return 'Clean track: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
+            tsToHr(self.track.start_point.timestamp, fmt='%Y-%m-%d %H:%M'),
+            tsToHr(self.track.finish_point.timestamp, fmt='%H:%M'),
+            self.total_distance,
             speed_to_pace(self.average_speed),
             self.average_speed,
             self.track_type,
-            f', patches count: {self.patches_count}'if self.patches_count else '',
+            f', patches count: {self.patches_count}' if self.patches_count else '',
             f', original distance: {self.original_distance:.3f} km' if self.patches_count else '',
         )
 
 
-
-def get_clean_track(track: CleanTrack) -> CleanTrack:
-    track_copy = track
-    new_track = None
-    while not new_track or new_track.patches_count:
-        new_track = clean(track_copy)
-        track_copy = new_track
-
-    return new_track
-
-
 def clean(
-    track: CleanTrack,
+    clean_track: CleanTrack,
     one_side_speed=2,
     both_side_speed=3,
     distance_limit=5,
-):
-    point_warnings = []
-    log.debug('point ### \tprev_sp\tnext_sp\tp_durtn\tn_durtn\tp_dist\tn_dist\trating')
-    for index, point in enumerate(track.points):
-        prev_segment = track.segments[index - 1] if index >= 1 else None
-        next_segment = track.segments[index] if index < len(track.segments) else None
-        prev_speed_rating = speed_rating(prev_segment, track.average_speed) if prev_segment else 0
-        next_speed_rating = speed_rating(next_segment, track.average_speed) if next_segment else 0
+) -> CleanTrack:
+    is_ok = []
+    log.info('\t'.join([
+        'point ### ',
+        'prev_sp',
+        'next_sp',
+        'p_durtn',
+        'n_durtn',
+        'p_dist',
+        'n_dist',
+        'pr_sp_r',
+        'n_sp_r',
+        'rating',
+    ]))
+    for index, point in enumerate(clean_track.track.points):
+        prev_segment = clean_track.segments[index - 1] if index >= 1 else None
+        next_segment = clean_track.segments[index] if index < len(clean_track.segments) else None
+        prev_speed_rating = speed_rating(prev_segment, clean_track.average_speed) if prev_segment else 0
+        next_speed_rating = speed_rating(next_segment, clean_track.average_speed) if next_segment else 0
 
-        has_warning = False
+        point_is_ok = True
         if not prev_segment:
             if next_speed_rating >= one_side_speed:
-                has_warning = True
+                point_is_ok = False
         elif not next_segment:
             if prev_speed_rating >= one_side_speed:
-                has_warning = True
+                point_is_ok = False
         else:
             rating = distance_rating(prev_segment, next_segment)
             if rating >= distance_limit or prev_speed_rating >= both_side_speed or next_speed_rating >= both_side_speed:
-                has_warning = True
+                point_is_ok = False
 
-            log.debug(
+            log.info(
                 'point %03d:\t%.2f\t%.2f\t%d\t%d\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s%s',
                 index,
                 prev_segment.speed,
@@ -188,39 +208,31 @@ def clean(
                 next_speed_rating,
                 rating,
                 valueToStr(rating * 50, 5),
-                ' << deleting' if has_warning else '',
+                ' << deleting' if not point_is_ok else '',
             )
 
         if index <= 10 and next_speed_rating >= 10:
             log.debug('Cut early start errors')
             for i in range(index):
-                point_warnings[i] = True
+                is_ok[i] = False
 
-        point_warnings.append(has_warning)
+        is_ok.append(point_is_ok)
 
-    points = [
-        point
-        for point, warning in zip(track.points, point_warnings)
-        if not warning
-    ]
-    return CleanTrack(
-        points=points,
-        description=track.description,
-        source_file=track.source_file,
-        original_distance=track.original_distance,
-        patches_count=track.patches_count + len(track.points) - len(points),
+    return CleanTrack(track=clean_track.track, is_ok=is_ok)
+
+
+def analyze_track(track: model.Track) -> CleanTrack:
+    log.debug('Cleaning track')
+    old_track = CleanTrack(
+        track=track,
+        is_ok=[True for _ in track.points]
     )
+    new_track = None
+    while (new_track is None) or (new_track.patches_count > old_track.patches_count):
+        new_track = clean(old_track)
+        old_track = new_track
 
-
-def analyze_track(fit_track: model.Track):
-    original_track = CleanTrack(
-        fit_track.points,
-        description=fit_track.description,
-        source_file=fit_track.filename,
-    )
-    clean_track = get_clean_track(original_track)
-
-    return original_track, clean_track
+    return new_track
 
 
 def analyze(args):
@@ -243,34 +255,35 @@ def analyze(args):
         files = [f for f in files if args.filter in f]
         log.info(f'Got {len(files)} files matching filter {args.filter}')
 
-    fit_tracks = []
+    tracks = []
     for file in files:
         track = fitreader.read_fit_file(file, raise_on_error=False)
         if track.is_valid:
-            fit_tracks.append(track)
+            tracks.append(track)
             log.info(f'Got {track}, {track.points[0].yandex_maps_link}')
         else:
             log.error(f'Skipping {track}')
 
-    fit_tracks.sort(key=lambda track: track.start_timestamp)
-    for fitTrack in fit_tracks:
-        original_track, clean_track = analyze_track(fitTrack)
-        if args.write and (clean_track.patches_count > 0):
-            log.info('Compare tracks at https://www.mygpsfiles.com/app/')
-            for points, suffix in [
-                (original_track.points, 'original'),
-                (clean_track.points, 'patched'),
-            ]:
-                parts = original_track.source_file.split('.')
-                parts[-2] = parts[-2] + '_' + suffix
-                parts[-1] = 'gpx'
-                filename = '.'.join(parts)
-                gpx_writer = GpxWriter(filename)
-                gpx_writer.AddPoints(points)
-                if gpx_writer.HasPoints():
-                    gpx_writer.Save()
-                else:
-                    log.info(f'No points to save: {filename}')
+    tracks.sort(key=lambda track: track.start_timestamp)
+    for track in tracks:
+        clean_track = analyze_track(track)
+        log.info(f'{clean_track}')
+        # if args.write and (clean_track.patches_count > 0):
+        #     log.info('Compare tracks at https://www.mygpsfiles.com/app/')
+        #     for points, suffix in [
+        #         (original_track.points, 'original'),
+        #         (clean_track.points, 'patched'),
+        #     ]:
+        #         parts = original_track.source_file.split('.')
+        #         parts[-2] = parts[-2] + '_' + suffix
+        #         parts[-1] = 'gpx'
+        #         filename = '.'.join(parts)
+        #         gpx_writer = GpxWriter(filename)
+        #         gpx_writer.AddPoints(points)
+        #         if gpx_writer.HasPoints():
+        #             gpx_writer.Save()
+        #         else:
+        #             log.info(f'No points to save: {filename}')
 
 
 

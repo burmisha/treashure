@@ -9,7 +9,8 @@ import os
 import library
 from tools import fitreader
 from tools import model
-
+from tools import speed
+from typing import List
 
 with st.sidebar:
     years = list(range(2013, 2023))
@@ -27,6 +28,8 @@ with st.sidebar:
         sorted(files.keys()),
     )
 
+    add_clean_track = st.checkbox('Add clean track')
+
     track = fitreader.read_fit_file(files[track_name])
     st.write('Start:', track.start_ts)
 
@@ -40,22 +43,29 @@ m = folium.Map(
 )
 m.fit_bounds(track.min_max_lat_long)
 
-start_marker = folium.Marker(
-    track.start_point.lat_long,
-    tooltip='start',
-    icon=folium.Icon(color='blue', icon='play'),
-)
-start_marker.add_to(m)
-finish_marker = folium.Marker(
-    track.finish_point.lat_long,
-    tooltip='finish',
-    icon=folium.Icon(color='green', icon='stop'),
-)
-finish_marker.add_to(m)
+def add_marker(point: model.GeoPoint, tooltip: str, color: str, icon: str):
+    marker = folium.Marker(
+        point.lat_long,
+        tooltip=tooltip,
+        icon=folium.Icon(color=color, icon=icon),
+    )
+    marker.add_to(m)
 
-for index, (seg_start, seg_finish) in enumerate(zip(track.points[:-1], track.points[1:])):
-    color = '#11ffff' if index % 2 else '#ff11ff'
-    pl = folium.vector_layers.PolyLine([seg_start.lat_long, seg_finish.lat_long], color=color)
-    pl.add_to(m)
+add_marker(point=track.start_point, tooltip='start', color='blue', icon='play')
+add_marker(point=track.finish_point, tooltip='finish', color='green', icon='stop')
+
+
+def add_track(points: List[model.GeoPoint]):
+    for index, (start, finish) in enumerate(zip(points[:-1], points[1:])):
+        color = '#11ffff' if index % 2 else '#ff11ff'
+        pl = folium.vector_layers.PolyLine([start.lat_long, finish.lat_long], color=color)
+        pl.add_to(m)
+
+add_track(track.points)
+
+if add_clean_track:
+    clean_track = speed.analyze_track(track)
+    add_track(clean_track.clean_points)
+
 
 st_data = st_folium(m, width = 725)
