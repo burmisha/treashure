@@ -43,11 +43,25 @@ def parse_values(values: dict) -> Optional[GeoPoint]:
     return point
 
 
-def get_points(filename, check_crc: bool) -> Tuple[List[GeoPoint], List[int]]:
+def get_points(filename, check_crc: bool) -> Track:
     points = []
     failures = []
 
     fit_file = fitparse.FitFile(filename, check_crc=check_crc)
+    activity_messages = list(fit_file.get_messages('activity'))
+    assert len(activity_messages) == 1
+    activity_values = activity_messages[0].get_values()
+    timestamp = activity_values['timestamp']
+    local_timestamp = activity_values['local_timestamp']
+
+    timedelta = local_timestamp - timestamp
+    if timedelta not in [
+        datetime.timedelta(seconds=10800),
+        datetime.timedelta(seconds=14400),
+    ]:
+        raise RuntimeError(f'Invalid timezone for {filename}: {timedelta}')
+    activity_timezone = datetime.timezone(timedelta)
+
     for message_index, message in enumerate(fit_file.get_messages(name='record')):
         values = message.get_values()
         try:
@@ -64,6 +78,7 @@ def get_points(filename, check_crc: bool) -> Tuple[List[GeoPoint], List[int]]:
         filename=filename,
         points=points,
         failures=failures,
+        activity_timezone=activity_timezone
     )
 
 

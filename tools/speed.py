@@ -17,9 +17,6 @@ log = logging.getLogger(__name__)
 
 from typing import List
 
-def tsToHr(timestamp, fmt='%Y-%m-%d %H:%M:%S') -> str:
-    return datetime.datetime.utcfromtimestamp(timestamp).strftime(fmt)
-
 
 def valueToStr(value, threshold=None) -> str:
     return '\u2591' * min(int(value), threshold) + '\u2592' * max(max(int(value), threshold) - threshold, 0)
@@ -146,9 +143,11 @@ class CleanTrack(object):
             return 'other'
 
     def __str__(self):
+        start_str = datetime.datetime.fromtimestamp(self.track.start_point.timestamp, self.track.activity_timezone).strftime('%Y-%m-%d %H:%M')
+        finish_str = datetime.datetime.fromtimestamp(self.track.finish_point.timestamp, self.track.activity_timezone).strftime('%H:%M')
         return 'Clean track: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
-            tsToHr(self.track.start_point.timestamp, fmt='%Y-%m-%d %H:%M'),
-            tsToHr(self.track.finish_point.timestamp, fmt='%H:%M'),
+            start_str,
+            finish_str,
             self.total_distance,
             speed_to_pace(self.average_speed),
             self.average_speed,

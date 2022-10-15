@@ -48,6 +48,7 @@ class Track:
     points: List[GeoPoint] = attr.ib()
     failures: List[int] = attr.ib()
     correct_crc: Optional[bool] = attr.ib(default=None)
+    activity_timezone: Optional[datetime.timezone] = attr.ib(default=None)
 
     @property
     def start_timestamp(self) -> float:
@@ -120,6 +121,10 @@ class Track:
             [self.min_lat_view, self.min_long_view],
             [self.max_lat_view, self.max_long_view],
         ]
+
+    @cached_property
+    def year_dir(self) -> str:
+        return self.start_ts.strftime('%Y')
 
     @cached_property
     def basename(self):

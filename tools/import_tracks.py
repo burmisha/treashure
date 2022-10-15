@@ -115,7 +115,7 @@ def run_import(import_config: ImportConfig):
         log.info(track)
         # if track.is_valid:
         #     tools.speed.analyze_track(track)
-        dst_file = os.path.join(import_config.destination_dir, track.start_ts.strftime('%Y'), track.canonic_basename)
+        dst_file = os.path.join(import_config.destination_dir, track.year_dir, track.canonic_basename)
 
         imported_file = processed_files.get(src_file.md5sum)
         if imported_file is None:
