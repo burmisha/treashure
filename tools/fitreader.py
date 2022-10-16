@@ -18,10 +18,6 @@ class InvalidTimezone(Exception):
     pass
 
 
-class InvalidPoint(Exception):
-    pass
-
-
 def __from_semicircles(value: float) -> float:
     # https://forums.garmin.com/forum/developers/garmin-developer-information/60220-
     return float(value) * 180 / (2 ** 31)
@@ -30,26 +26,50 @@ def __from_semicircles(value: float) -> float:
 def get_point(values: dict) -> GeoPoint:
     timestamp = int((values['timestamp'] - datetime.datetime(1970, 1, 1)).total_seconds())
     assert 1000000000 < timestamp < 2000000000
-    if 'enhanced_altitude' in values:
-        assert values['enhanced_altitude'] == values['altitude']
 
     longitude = values.get('position_long')
+    if longitude is not None:
+        longitude = __from_semicircles(longitude)
+        longitude = float(f'{longitude:.9f}')
+
     latitude = values.get('position_lat')
-    if (longitude is None) or (latitude is None):
-        raise InvalidPoint('No longitude on latitude')
+    if latitude is not None:
+        latitude = __from_semicircles(latitude)
+        latitude = float(f'{latitude:.9f}')
 
-    altitude = values['altitude']
-    assert altitude is not None
+    altitude = values.get('altitude')
+    if 'enhanced_altitude' in values:
+        assert values['enhanced_altitude'] == altitude
+    if altitude is not None:
+        altitude = float(f'{altitude:.3f}')
 
-    longitude = __from_semicircles(longitude)
-    latitude = __from_semicircles(latitude)
+    speed = values.get('speed')
+    if 'enhanced_speed' in values:
+        assert values['enhanced_speed'] == speed
+    if speed is not None:
+        speed = float(f'{speed:.3f}')
+
+    distance_m = values['distance']
+    if distance_m is not None:
+        distance_m = float(f'{distance_m:.2f}')
+
+    cadence = values.get('cadence')
+    if cadence is not None:
+        cadence = int(cadence)
+
+    heart_rate = values.get('heart_rate')
+    if heart_rate is not None:
+        heart_rate = int(heart_rate)
+
     return GeoPoint(
-        longitude=float(f'{longitude:.9f}'),
-        latitude=float(f'{latitude:.9f}'),
-        altitude=float(f'{altitude:.3f}'),
-        cadence=values.get('cadence') or None,
-        heart_rate=values.get('heart_rate') or None,
+        longitude=longitude,
+        latitude=latitude,
+        altitude=altitude,
+        cadence=cadence,
+        heart_rate=heart_rate,
         timestamp=timestamp,
+        speed=speed,
+        distance_m=distance_m,
     )
 
 
@@ -70,22 +90,6 @@ def get_activity_timezone(fit_file: fitparse.FitFile) -> datetime.timezone:
     return datetime.timezone(timedelta)
 
 
-def get_points_and_failures(fit_file: fitparse.FitFile) -> Tuple[List[GeoPoint], List[int]]:
-    points = []
-    failures = []
-    for message_index, message in enumerate(fit_file.get_messages(name=RECORD_MESSAGE)):
-        try:
-            values = message.get_values()
-            points.append(get_point(values))
-        except InvalidPoint:
-            failures.append(message_index)
-        except:
-            log.error(f'failed at {message_index}')
-            raise
-
-    return points, failures
-
-
 def read_fit_file(filename, raise_on_error=True) -> Track:
     try:
         fit_file = fitparse.FitFile(filename, check_crc=True)
@@ -95,12 +99,14 @@ def read_fit_file(filename, raise_on_error=True) -> Track:
         crc_ok = False
 
     activity_timezone = get_activity_timezone(fit_file)
-    points, failures = get_points_and_failures(fit_file)
+    points = [
+        get_point(message.get_values())
+        for message in fit_file.get_messages(name=RECORD_MESSAGE)
+    ]
 
     track = Track(
         filename=filename,
         points=points,
-        failures=failures,
         activity_timezone=activity_timezone,
         correct_crc=crc_ok,
     )

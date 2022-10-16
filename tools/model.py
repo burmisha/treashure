@@ -8,12 +8,14 @@ import re
 
 @attr.s
 class GeoPoint:
-    longitude: float = attr.ib(default=None)
-    latitude: float = attr.ib(default=None)
+    longitude: Optional[float] = attr.ib(default=None)
+    latitude: Optional[float] = attr.ib(default=None)
     altitude: Optional[float] = attr.ib(default=None)
-    timestamp: Optional[float] = attr.ib(default=None)
-    cadence: Optional[float] = attr.ib(default=None)
-    heart_rate: Optional[float] = attr.ib(default=None)
+    timestamp: Optional[int] = attr.ib(default=None)
+    cadence: Optional[int] = attr.ib(default=None)
+    heart_rate: Optional[int] = attr.ib(default=None)
+    distance_m: Optional[float] = attr.ib(default=None)
+    speed: Optional[float] = attr.ib(default=None)
 
     @property
     def datetime(self) -> datetime.datetime:
@@ -26,6 +28,10 @@ class GeoPoint:
     @property
     def lat_long(self) -> List[float]:
         return [self.latitude, self.longitude]
+
+    @property
+    def is_ok(self) -> bool:
+        return self.latitude is not None and self.longitude is not None
 
     @property
     def yandex_maps_link(self):
@@ -46,7 +52,6 @@ VIEW_MARGIN = 0.01
 class Track:
     filename: str = attr.ib()
     points: List[GeoPoint] = attr.ib()
-    failures: List[int] = attr.ib()
     correct_crc: Optional[bool] = attr.ib(default=None)
     activity_timezone: Optional[datetime.timezone] = attr.ib(default=None)
 
@@ -157,22 +162,23 @@ class Track:
 
         return f'{new_basename}.FIT'
 
-    @property
-    def is_valid(self):
-        points_count = len(self.points)
-        failures_count = len(self.failures)
+    @cached_property
+    def failures_count(self) -> int:
+        return len([point for point in self.points if not point.is_ok])
 
-        if points_count < ErrorThreshold.MIN_COUNT:
+    @cached_property
+    def ok_count(self) -> int:
+        return len([point for point in self.points if point.is_ok])
+
+    @cached_property
+    def is_valid(self):
+        if self.ok_count < ErrorThreshold.MIN_COUNT:
             return False
 
-        if (failures_count > ErrorThreshold.SHARE * points_count):
+        if (self.failures_count > ErrorThreshold.SHARE * self.ok_count):
             return False
 
         return True
-
-    @property
-    def description(self):
-        return os.path.basename(self.filename)
 
     @property
     def status(self) -> str:
@@ -182,14 +188,11 @@ class Track:
         return msg
 
     def __str__(self):
-        if self.failures:
-            msg = (
-                f'track {self.filename} {self.status}: {len(self.points)} points and {len(self.failures)} failures, '
-                f'{self.failures[:3]} (3 first ones)'
-            )
-            return msg
-        else:
-            return f'track {self.filename} {self.status}: {len(self.points)} points'
+        ok_count = len(self.points)
+        msg = f'track {self.filename} {self.status}: {self.ok_count} points'
+        if self.failures_count:
+            msg += f' and {self.failures_count} failures'
+        return msg
 
 
 SYNC_LOCAL_DIR = os.path.join(library.files.Location.Dropbox, 'running')

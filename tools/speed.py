@@ -36,13 +36,15 @@ class Segment(object):
 
     @cached_property
     def distance(self) -> float:
+        if not self.start.is_ok or not self.finish.is_ok:
+            raise RuntimeError('Invalid segment')
         return geopy.distance.distance(
             (self.start.latitude, self.start.longitude),
             (self.finish.latitude, self.finish.longitude),
         ).km
 
     @cached_property
-    def duration(self) -> float:
+    def duration(self) -> int:
         return self.finish.timestamp - self.start.timestamp
 
     @cached_property
@@ -69,37 +71,35 @@ def distance_rating(first: Segment, second: Segment) -> float:
 SEGMENT_DURATION_THRESHOLD = 120
 
 
+def points_to_segments(points: List[model.GeoPoint]) -> List[Segment]:
+    return [
+        Segment(points[index], points[index + 1])
+        for index in range(len(points) - 1)
+    ]
+
+
 @attr.s
 class CleanTrack(object):
     track: model.Track = attr.ib()
     is_ok: List[bool] = attr.ib()
 
     @cached_property
-    def clean_points(self) -> List[model.GeoPoint]:
-        return [
+    def segments(self) -> List[Segment]:
+        clean_points = [
             point
             for point, point_is_ok in zip(self.track.points, self.is_ok)
-            if point_is_ok
+            if point_is_ok and point.is_ok
         ]
-
-    @cached_property
-    def segments(self) -> List[Segment]:
-        clean_points = self.clean_points
-        segments = []
-        for index in range(len(clean_points) - 1):
-            segment = Segment(clean_points[index], clean_points[index + 1])
+        segments = points_to_segments(clean_points)
+        for segment in segments:
             if segment.duration >= SEGMENT_DURATION_THRESHOLD:
                 log.warning(f'Strange duration: {segment.duration}')
-            segments.append(segment)
         return segments
 
     @cached_property
     def original_distance(self) -> float:
-        points = self.track.points
-        segments = [
-            Segment(points[index], points[index + 1])
-            for index in range(len(points) - 1)
-        ]
+        points = [point for point in self.track.points if point.is_ok]
+        segments = points_to_segments(points)
         return sum(segment.distance for segment in segments)
 
     @cached_property
@@ -115,7 +115,7 @@ class CleanTrack(object):
         )
 
     @cached_property
-    def total_duration(self):
+    def total_duration(self) -> int:
         return sum(
             segment.duration
             for segment in self.segments 
@@ -145,16 +145,15 @@ class CleanTrack(object):
     def __str__(self):
         start_str = datetime.datetime.fromtimestamp(self.track.start_point.timestamp, self.track.activity_timezone).strftime('%Y-%m-%d %H:%M')
         finish_str = datetime.datetime.fromtimestamp(self.track.finish_point.timestamp, self.track.activity_timezone).strftime('%H:%M')
-        return 'Clean track: %s-%s\t%.3f km at %s (%.2f m/sec) %s%s%s' % (
-            start_str,
-            finish_str,
-            self.total_distance,
-            speed_to_pace(self.average_speed),
-            self.average_speed,
+        return ' '.join([
+            f'Clean track: {start_str}-{finish_str}',
+            f'\t{self.total_distance:.3f} km',
+            f'at {speed_to_pace(self.average_speed)}',
+            f'({self.average_speed:.2f} m/sec)',
             self.track_type,
             f', patches count: {self.patches_count}' if self.patches_count else '',
             f', original distance: {self.original_distance:.3f} km' if self.patches_count else '',
-        )
+        ]).replace(' ,', ',')
 
 
 def clean(
@@ -177,7 +176,7 @@ def clean(
         'rating',
     ]))
     for index, point in enumerate(clean_track.track.points):
-        prev_segment = clean_track.segments[index - 1] if index >= 1 else None
+        prev_segment = clean_track.segments[index - 1] if 1 <= index <= len(clean_track.segments) else None
         next_segment = clean_track.segments[index] if index < len(clean_track.segments) else None
         prev_speed_rating = speed_rating(prev_segment, clean_track.average_speed) if prev_segment else 0
         next_speed_rating = speed_rating(next_segment, clean_track.average_speed) if next_segment else 0
