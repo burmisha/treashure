@@ -12,5 +12,21 @@ Scripts to handle files on local computer:
 — check backups.
 
 ```
-./mobile.py parse --dir '/Users/burmisha/Yandex.Disk.localized/Photo/phone/'
+. venv/bin/activate
+
+YD="${HOME}/Yandex.Disk.localized"
+
+./run.py photo-analyze \
+  --dir "${YD}/Photo/phone/" \
+  --dir "${YD}/Фотокамера/" \
+  --exclude "${YD}/Photo/phone/2017-11 Mi5/Pictures"
+
+deactivate
 ```
+
+## Links
+
+* https://www.awaresystems.be/imaging/tiff/tifftags/privateifd/exif.html
+* https://www.awaresystems.be/imaging/tiff/tifftags/privateifd/exif/subsectime.html
+* https://photo.stackexchange.com/questions/69959/when-is-each-of-these-exif-date-time-variables-created-and-in-what-circumstan
+* http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf#page=37
