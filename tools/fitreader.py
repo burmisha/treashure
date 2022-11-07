@@ -3,7 +3,7 @@ import datetime
 
 import os
 
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from tools.model import GeoPoint, Track
 
 import logging
@@ -73,21 +73,24 @@ def get_point(values: dict) -> GeoPoint:
     )
 
 
-def get_activity_timezone(fit_file: fitparse.FitFile) -> datetime.timezone:
+def get_activity_timezone(fit_file: fitparse.FitFile) -> Optional[datetime.timezone]:
     activity_messages = list(fit_file.get_messages(ACTIVITY_MESSAGE))
     assert len(activity_messages) == 1
     activity_values = activity_messages[0].get_values()
     timestamp = activity_values['timestamp']
-    local_timestamp = activity_values['local_timestamp']
+    local_timestamp = activity_values.get('local_timestamp')
+    if local_timestamp is not None:
 
-    timedelta = local_timestamp - timestamp
-    if timedelta not in [
-        datetime.timedelta(seconds=10800),
-        datetime.timedelta(seconds=14400),
-    ]:
-        raise InvalidTimezone(f'Invalid timezone: {timedelta}')
+        timedelta = local_timestamp - timestamp
+        if timedelta not in [
+            datetime.timedelta(seconds=10800),
+            datetime.timedelta(seconds=14400),
+        ]:
+            raise InvalidTimezone(f'Invalid timezone: {timedelta}')
 
-    return datetime.timezone(timedelta)
+        return datetime.timezone(timedelta)
+    else:
+        return None
 
 
 def read_fit_file(filename, raise_on_error=True) -> Track:

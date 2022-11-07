@@ -12,9 +12,10 @@ from tools import model
 from tools import speed
 from typing import List
 
+
 with st.sidebar:
     years = list(range(2013, 2023))
-    year = st.selectbox('Year: ', years, len(years) - 1)
+    year = st.selectbox('Year: ', years, len(years) - 4)
 
     dirname = os.path.join(model.SYNC_LOCAL_DIR, str(year))
 
@@ -22,19 +23,24 @@ with st.sidebar:
         os.path.basename(file): file
         for file in library.files.walk(dirname, extensions=['.FIT', '.fit'])
     }
+    sorted_keys = sorted(files.keys())
 
     track_name = st.selectbox(
         'Track file name',
-        sorted(files.keys()),
+        sorted_keys,
+        len(sorted_keys) - 4,
     )
 
     add_clean_track = st.checkbox('Add clean track')
 
-    track = fitreader.read_fit_file(files[track_name])
+    track = fitreader.read_fit_file(files[track_name], raise_on_error=False)
     st.write('Start:', track.start_ts)
 
+    st.write('Track file:', files[track_name])
 
-st.write('Track file:', files[track_name])
+    speed_limit = int(st.slider('speed limit', min_value=0, max_value=10, value=speed.DEFAULT_SPEED_LIMIT))
+    distance_limit = int(st.slider('distance limit', min_value=0, max_value=10, value=speed.DEFAULT_DISTANCE_LIMIT))
+
 
 m = folium.Map(
     location=[track.middle_lat, track.middle_long],
@@ -61,11 +67,11 @@ def add_track(points: List[model.GeoPoint]):
         pl = folium.vector_layers.PolyLine([start.lat_long, finish.lat_long], color=color)
         pl.add_to(m)
 
-add_track(track.points)
+# add_track(track.ok_points)
 
 if add_clean_track:
-    clean_track = speed.analyze_track(track)
-    add_track(clean_track.clean_points)
+    clean_track = speed.analyze_track(track, speed_limit=speed_limit, distance_limit=distance_limit)
+    add_track(clean_track.ok_points)
 
 
 st_data = st_folium(m, width = 725)

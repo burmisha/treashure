@@ -6,6 +6,14 @@ import os
 from functools import cached_property
 import re
 
+import geopy
+import geopy.distance
+
+import logging
+log = logging.getLogger(__name__)
+
+SEGMENT_DURATION_THRESHOLD = 10000
+
 @attr.s
 class GeoPoint:
     longitude: Optional[float] = attr.ib(default=None)
@@ -40,12 +48,51 @@ class GeoPoint:
         return f'https://yandex.ru/maps/?ll={ll}&mode=search&sll={ll}&text={text}&z=15'
 
 
+@attr.s
+class Segment(object):
+    start: GeoPoint = attr.ib()
+    finish: GeoPoint = attr.ib()
+
+    @cached_property
+    def distance(self) -> float:
+        if not self.start.is_ok or not self.finish.is_ok:
+            raise RuntimeError('Invalid segment')
+        return geopy.distance.distance(
+            (self.start.latitude, self.start.longitude),
+            (self.finish.latitude, self.finish.longitude),
+        ).km
+
+    @cached_property
+    def duration(self) -> int:
+        return self.finish.timestamp - self.start.timestamp
+
+    @cached_property
+    def speed(self) -> float:
+        if self.duration > 0:
+            return 1000 * self.distance / self.duration  # meters per second
+        return 0
+
+
 class ErrorThreshold:
-    MIN_COUNT = 50
-    SHARE = 0.9
+    MIN_COUNT = 2
+    SHARE = 0.7
 
 
 VIEW_MARGIN = 0.01
+
+
+def points_to_segments(points: List[GeoPoint]) -> List[Segment]:
+    return [
+        Segment(points[index], points[index + 1])
+        for index in range(len(points) - 1)
+    ]
+
+
+def speed_to_pace(speed: float) -> str:
+    pace = 1000. / speed
+    minutes = int((pace + 0.5) / 60)
+    seconds = int((pace + 0.5) - minutes * 60)
+    return '%d:%02d' % (minutes, seconds)
 
 
 @attr.s
@@ -70,31 +117,48 @@ class Track:
 
     @property
     def start_point(self) -> GeoPoint:
-        return self.points[0]
+        return self.ok_points[0]
 
     @property
     def finish_point(self) -> GeoPoint:
-        return self.points[-1]
+        return self.ok_points[-1]
 
     @property
     def start_ts(self) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(self.start_timestamp)
 
+
+    @cached_property
+    def ok_points(self) -> List[GeoPoint]:
+        return [point for point in self.points if point.is_ok]
+
     @cached_property
     def max_lat(self) -> float:
-        return max(point.latitude for point in self.points)
+        result = max(point.latitude for point in self.ok_points)
+        if result is None:
+            raise RuntimeError('No max_lat')
+        return result
 
     @cached_property
     def max_long(self) -> float:
-        return max(point.longitude for point in self.points)
+        result = max(point.longitude for point in self.ok_points)
+        if result is None:
+            raise RuntimeError('No max_long')
+        return result
 
     @cached_property
     def min_lat(self) -> float:
-        return min(point.latitude for point in self.points)
+        result = min(point.latitude for point in self.ok_points)
+        if result is None:
+            raise RuntimeError('No min_lat')
+        return result
 
     @cached_property
     def min_long(self) -> float:
-        return min(point.longitude for point in self.points)
+        result = min(point.longitude for point in self.ok_points)
+        if result is None:
+            raise RuntimeError('No min_long')
+        return result
 
     @cached_property
     def min_long_view(self) -> float:
@@ -164,19 +228,20 @@ class Track:
 
     @cached_property
     def failures_count(self) -> int:
-        return len([point for point in self.points if not point.is_ok])
+        return len(self.points) - self.ok_count
 
     @cached_property
     def ok_count(self) -> int:
-        return len([point for point in self.points if point.is_ok])
+        return len(self.ok_points)
 
     @cached_property
     def is_valid(self):
+        log.debug(f'ok: {self.ok_count}, failures: {self.failures_count}')
         if self.ok_count < ErrorThreshold.MIN_COUNT:
             return False
 
-        if (self.failures_count > ErrorThreshold.SHARE * self.ok_count):
-            return False
+        # if (self.failures_count > ErrorThreshold.SHARE * self.ok_count):
+        #     return False
 
         return True
 
@@ -193,6 +258,63 @@ class Track:
         if self.failures_count:
             msg += f' and {self.failures_count} failures'
         return msg
+
+    @cached_property
+    def segments(self) -> List[Segment]:
+        segments = points_to_segments(self.ok_points)
+        for segment in segments:
+            if segment.duration >= SEGMENT_DURATION_THRESHOLD:
+                log.warning(f'Strange duration: {segment.duration}')
+        return segments
+
+    @cached_property
+    def total_distance(self):
+        return sum(
+            segment.distance
+            for segment in self.segments
+            if segment.duration < SEGMENT_DURATION_THRESHOLD
+        )
+
+    @cached_property
+    def total_duration(self) -> int:
+        return sum(
+            segment.duration
+            for segment in self.segments
+            if segment.duration < SEGMENT_DURATION_THRESHOLD
+        )
+
+    @cached_property
+    def average_speed(self):
+        if self.total_duration > 0:
+            return 1000 * self.total_distance / self.total_duration
+        else:
+            return 0
+
+    @property
+    def track_type(self) -> str:
+        if self.total_distance >= 3 and 10 >= self.average_speed >= 4:
+            return 'cycling'
+        elif self.average_speed <= 4:
+            return 'running'
+        else:
+            return 'other'
+
+    @property
+    def explain(self) -> str:
+        if self.activity_timezone is not None:
+            start_str = datetime.datetime.fromtimestamp(self.start_point.timestamp, self.activity_timezone).strftime('%Y-%m-%d %H:%M')
+            finish_str = datetime.datetime.fromtimestamp(self.finish_point.timestamp, self.activity_timezone).strftime('%H:%M')
+        else:
+            start_str = datetime.datetime.utcfromtimestamp(self.start_point.timestamp).strftime('%Y-%m-%d %H:%M')
+            finish_str = datetime.datetime.utcfromtimestamp(self.finish_point.timestamp).strftime('%H:%M')
+        return ' '.join([
+            f'Track: {self.filename}: {start_str}-{finish_str}',
+            f'\t{self.total_distance:.3f} km',
+            f'at {speed_to_pace(self.average_speed)}',
+            f'({self.average_speed:.2f} m/sec)',
+            self.track_type,
+            f', patches count: {self.failures_count}' if self.failures_count else '',
+        ]).replace(' ,', ',')
 
 
 SYNC_LOCAL_DIR = os.path.join(library.files.Location.Dropbox, 'running')
