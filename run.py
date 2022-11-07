@@ -24,7 +24,8 @@ def create_arguments_parser():
     add_subparser('import', 'Import tracks from device', tools.import_tracks.populate_parser)
     add_subparser('join', 'Join old tracks into one', tools.join_tracks.populate_parser)
     add_subparser('analyze', 'Analyze files', tools.speed.populate_parser)
-    add_subparser('tofmal', 'Download tofmal', tools.tofmal.populate_parser)
+    add_subparser('photo-parse', 'Parse mobile photos', tools.mobile.analyze.populate_parser)
+    add_subparser('photo-analyze', 'Analyze mobile photos', tools.mobile.mobile.populate_parser)
 
     return parser
 

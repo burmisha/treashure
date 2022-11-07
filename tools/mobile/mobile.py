@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import argparse
 import json
 import os
@@ -14,11 +11,11 @@ import PIL.ExifTags
 
 from pprint import pprint
 
-import md5sum
+from library import md5sum
 import collections
 
 import logging
-log = logging.getLogger(__file__)
+log = logging.getLogger(__name__)
 
 
 class NoExifInPng(Exception):
@@ -38,6 +35,7 @@ def timestampFromStr(dateStr, fmt):
         raise RuntimeError('Invalid timestamp {} from {!r}'.format(timestamp, dateStr))
     return timestamp
 
+
 def toDict(photofile):
     return {
         'path': photofile.Path,
@@ -45,11 +43,13 @@ def toDict(photofile):
         'timestamps': photofile.Timestamps,
     }
 
+
 def fromDict(photofileJson):
     photofile = PhotoFile(photofileJson['path'])
     photofile.Md5Sum = photofileJson['md5sum']
     photofile.Timestamps = photofileJson['timestamps']
     return photofile
+
 
 class PhotoFile(object):
     def __init__(self, pathToFile):
@@ -74,7 +74,11 @@ class PhotoFile(object):
                     exif = None
                 else:
                     # https://stackoverflow.com/questions/4764932/in-python-how-do-i-read-the-exif-data-for-an-image
-                    exif = { PIL.ExifTags.TAGS[k]: v for k, v in rawExif.iteritems() if k in PIL.ExifTags.TAGS }
+                    exif = {
+                        PIL.ExifTags.TAGS[k]: v
+                        for k, v in rawExif.items()
+                        if k in PIL.ExifTags.TAGS
+                    }
         if exif is None:
             log.warn(self.LogMessage('No exif'))
         self.Exif = exif
@@ -82,7 +86,10 @@ class PhotoFile(object):
     def ParseGps(self):
         # https://stackoverflow.com/questions/19804768/interpreting-gps-info-of-exif-data-from-photo-in-python
         if 'GPSInfo' in self.Exif:
-            gpsInfo = { PIL.ExifTags.GPSTAGS.get(key, key): value for key, value in self.Exif['GPSInfo'].iteritems() }
+            gpsInfo = {
+                PIL.ExifTags.GPSTAGS.get(key, key): value
+                for key, value in self.Exif['GPSInfo'].items()
+            }
         else:
             gpsInfo = None
         return gpsInfo
@@ -129,7 +136,7 @@ class PhotoFile(object):
 
         if self.Exif:
             isVsco = self.IsVsco()
-            for key, value in self.Exif.iteritems():
+            for key, value in self.Exif.items():
                 lowerKey = key.lower()
                 if key in [
                     'DateTime',
@@ -161,8 +168,8 @@ class PhotoFile(object):
 
     def IsVsco(self):
         isVsco = False
-        for key, value in self.Exif.iteritems():
-            if isinstance(value, (unicode, str)):
+        for key, value in self.Exif.items():
+            if isinstance(value, str):
                 if 'vsco' in value.lower():
                     log.debug('Is vsco: {} : {}'.format(key, value))
                     isVsco = True
@@ -259,41 +266,9 @@ def processDirs(args):
         ))
 
 
-def analyze(args):
-    with open(args.json_file) as f:
-        res = json.load(f)
-    photoFiles = collections.defaultdict(list)
-    for item in res:
-        photoFile = fromDict(item)
-        photoFiles[photoFile.Md5Sum].append(photoFile)
-
-    for md5sumValue, photoFilesList in photoFiles.iteritems():
-        if len(photoFilesList) > 1:
-            log.info(u'Duplicates: {}\n  {}'.format(
-                md5sumValue,
-                '\n  '.join(photoFile.Path for photoFile in photoFilesList)
-            ))
-
-
-def CreateArgumentsParser():
-    parser = argparse.ArgumentParser('Organize mobile photos', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--debug', help='Debug logging', action='store_true')
+def populate_parser(parser):
     parser.add_argument('--json-file', help='Json file to store all data', default='data.json')
-    subparsers = parser.add_subparsers(help='Modes')
-
-    dirsParser = subparsers.add_parser('parse', help='Process many dirs')
-    dirsParser.add_argument('--dir', help='Add dir to parsing', action='append', default=[])
-    dirsParser.add_argument('--exclude', help='Exclude dir from parsing', action='append', default=[])
-    dirsParser.add_argument('--file', help='Add file to parsing', action='append', default=[])
-    dirsParser.set_defaults(func=processDirs)
-
-    analyzeParser = subparsers.add_parser('analyze', help='Get info from json')
-    analyzeParser.set_defaults(func=analyze)
-    return parser
-
-if __name__ == '__main__':
-    parser = CreateArgumentsParser()
-    args = parser.parse_args()
-    logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s')
-    log.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    args.func(args)
+    parser.add_argument('--dir', help='Add dir to parsing', action='append', default=[])
+    parser.add_argument('--exclude', help='Exclude dir from parsing', action='append', default=[])
+    parser.add_argument('--file', help='Add file to parsing', action='append', default=[])
+    parser.set_defaults(func=processDirs)
