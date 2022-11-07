@@ -1,19 +1,16 @@
-import argparse
 import json
 import os
 import re
-import time
 import datetime
 
 import PIL
 import PIL.Image
 import PIL.ExifTags
 
-from pprint import pprint
-
 import library
-import collections
 from functools import cached_property
+import attr
+from typing import List
 
 import logging
 log = logging.getLogger(__name__)
@@ -23,11 +20,11 @@ class NoExifInPng(Exception):
     pass
 
 
-def timestampFromStr(dateStr, fmt):
+def timestampFromStr(dateStr: str, fmt: str) -> int:
     formatter = lambda s: s.replace(':', '-').replace('.', '-')
     tmpStr = formatter(dateStr)
     tmpFmt = formatter(fmt)
-    timestamp = int(time.mktime(datetime.datetime.strptime(tmpStr, fmt).timetuple()))
+    timestamp = int(datetime.datetime.strptime(tmpStr, fmt).timestamp())
     if 1300000000 < timestamp < 1600000000:
         pass
     elif timestamp == 0:
@@ -37,19 +34,19 @@ def timestampFromStr(dateStr, fmt):
     return timestamp
 
 
-def toDict(photofile):
-    return {
-        'path': photofile.Path,
-        'md5sum': photofile.Md5Sum,
-        'timestamps': photofile.Timestamps,
-    }
+@attr.s
+class PhotoInfo:
+    path: str = attr.ib()
+    md5sum: str = attr.ib()
+    timestamps: List[int] = attr.ib()
 
 
-def fromDict(photofileJson):
-    photofile = PhotoFile(photofileJson['path'])
-    photofile.Md5Sum = photofileJson['md5sum']
-    photofile.Timestamps = photofileJson['timestamps']
-    return photofile
+def fromDict(data: dict) -> PhotoInfo:
+    return PhotoInfo(
+        path=data['path'],
+        md5sum=data['md5sum'],
+        timestamps=data['timestamps'],
+    )
 
 
 def parse_timestamp(basename: str) -> int:
@@ -79,14 +76,15 @@ def parse_timestamp(basename: str) -> int:
     return None
 
 
+# TODO: check timezones
 def test_parse_timestamp():
     for basename, expected in [
-        ('Screenshot_20191231-190906.png', 1577812146),
-        ('Screenshot_20191231-190906~2.png', 1577812146),
-        ('PHOTO_20191231_190906_0.jpg', 1577812146),
+        ('Screenshot_20191231-190906.png', 1577804946),
+        ('Screenshot_20191231-190906~2.png', 1577804946),
+        ('PHOTO_20191231_190906_0.jpg', 1577804946),
     ]:
         parsed = parse_timestamp(basename)
-        assert parsed == expected, f'Broken parse:\n    parsed:\t\t{parsed}\n    sexpected:\t{expected}'
+        assert parsed == expected, f'Broken parse for {basename}:\n    parsed:\t\t{parsed}\n    expected:\t{expected}'
 
 
 test_parse_timestamp()
@@ -97,24 +95,23 @@ class PhotoFile(object):
         self.Path = path
 
     @property
+    def photo_info(self):
+        return PhotoInfo(
+            path=self.Path,
+            md5sum=self.Md5Sum,
+            timestamps=self.Timestamps,
+        )
+
+    @property
     def Basename(self):
         return os.path.basename(self.Path)
 
     @cached_property
-    def pil_format(self):
-        with PIL.Image.open(self.Path) as image:
-            return image.format
-
-    @cached_property
     def Exif(self):
         with PIL.Image.open(self.Path) as image:
-            if image.format == 'PNG':
-                return None
-            else:
+            if image.format != 'PNG':
                 rawExif = image._getexif()
-                if rawExif is None:
-                    return None
-                else:
+                if rawExif:
                     # https://stackoverflow.com/questions/4764932/in-python-how-do-i-read-the-exif-data-for-an-image
                     return {
                         PIL.ExifTags.TAGS[k]: v
@@ -122,33 +119,29 @@ class PhotoFile(object):
                         if k in PIL.ExifTags.TAGS
                     }
 
+        return None
+
     @cached_property
     def GpsInfo(self):
-        if self.Exif is None:
-            return None
-
         # https://stackoverflow.com/questions/19804768/interpreting-gps-info-of-exif-data-from-photo-in-python
-        if 'GPSInfo' in self.Exif:
-            gpsInfo = {
+        if self.Exif and ('GPSInfo' in self.Exif):
+            return {
                 PIL.ExifTags.GPSTAGS.get(key, key): value
                 for key, value in self.Exif['GPSInfo'].items()
             }
-        else:
-            gpsInfo = None
-        return gpsInfo
+        return None
 
     @cached_property
     def Camera(self):
-        if not self.Exif:
-            return None
+        if self.Exif:
+            make = self.Exif.get('Make')
+            model = self.Exif.get('Model')
+            if make:
+                return f'{make} {model}'
+            else:
+                log.debug(f'No camera: make {make!r}, model {model!r} in {self.Path}')
 
-        make = self.Exif.get('Make')
-        model = self.Exif.get('Model')
-        if make:
-            return f'{make} {model}'
-        else:
-            log.debug(f'No camera: make {make!r}, model {model!r} in {self.Path}')
-            return None
+        return None
 
     @cached_property
     def Timestamps(self):
@@ -160,7 +153,6 @@ class PhotoFile(object):
             log.debug(f'Name {self.Basename!r} has no date: {filenameTimestamp}')
 
         if self.Exif:
-            isVsco = self.IsVsco()
             for key, value in self.Exif.items():
                 lowerKey = key.lower()
                 if key in [
@@ -170,7 +162,7 @@ class PhotoFile(object):
                 ]:
                     assert re.match(r'^\d{4}(:\d{2}){2} (\d{2})(:\d{2}){2}$', value)
                     timestamp = timestampFromStr(value, '%Y-%m-%d %H-%M-%S')
-                    log.debug('Date {} is {} ({})'.format(key, value, timestamp))
+                    log.debug(f'Date {key} is {value} ({timestamp})')
                     timestamps.add(timestamp)
                 elif key in [
                     'SubsecTime',
@@ -191,14 +183,15 @@ class PhotoFile(object):
         return timestamps
 
 
+    @cached_property
     def IsVsco(self):
-        isVsco = False
-        for key, value in self.Exif.items():
-            if isinstance(value, str):
-                if 'vsco' in value.lower():
-                    log.debug('Is vsco: {} : {}'.format(key, value))
-                    isVsco = True
-        return isVsco
+        if self.Exif:
+            return any(
+                if isinstance(value, str) and 'vsco' in value.lower()
+                for  value in self.Exif.values()
+            )
+
+        return False
 
     @cached_property
     def Md5Sum(self) -> str:
@@ -253,16 +246,16 @@ def get_filenames(dirs, files, skip_paths):
 
 
 def processDirs(args):
-    photoFiles = []
+    photo_files = []
     processor = Processor()
     for filename in get_filenames(args.dir, args.file, args.skip):
-        photoFile = processor(filename)
-        if photoFile is not None:
-            photoFiles.append(photoFile)
+        photo_file = processor(filename)
+        if photo_file is not None:
+            photo_files.append(photo_file)
 
     with open(args.json_file, 'w') as f:
         f.write(json.dumps(
-            [toDict(photoFile) for photoFile in photoFiles],
+            [attr.asdict(photo_file.photo_info) for photo_file in photo_files],
             indent=4,
             sort_keys=True,
             ensure_ascii=False,
