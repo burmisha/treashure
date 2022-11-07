@@ -11,7 +11,7 @@ import PIL.ExifTags
 
 from pprint import pprint
 
-from library import md5sum
+import library
 import collections
 
 import logging
@@ -32,7 +32,7 @@ def timestampFromStr(dateStr, fmt):
     elif timestamp == 0:
         log.warn('Timestamp is 0')
     else:
-        raise RuntimeError('Invalid timestamp {} from {!r}'.format(timestamp, dateStr))
+        raise RuntimeError(f'Invalid timestamp {timestamp} from {dateStr!r}')
     return timestamp
 
 
@@ -58,11 +58,7 @@ class PhotoFile(object):
         self.Basename = os.path.basename(self.Path)
 
     def LogMessage(self, message, base=False):
-        if base:
-            logMessage = '{} in basename {}'.format(message, self.Basename)
-        else:
-            logMessage = '{} in file {}'.format(message, self.Path)
-        return logMessage
+        return f'{message} in basename {self.Basename if base else self.Path}'
 
     def GetExif(self):
         with PIL.Image.open(self.Path) as image:
@@ -121,6 +117,8 @@ class PhotoFile(object):
             filenameTimestamp = timestampFromStr(self.Basename[3:20], '%Y%m%d_%H_%M_%S')
         elif re.match(r'^DOS-\d{4}(-\d{2}){2} \d{2}(_\d{2}){2}Z\.jpg$', self.Basename):
             filenameTimestamp = timestampFromStr(self.Basename[4:23], '%Y-%m-%d %H_%M_%S')
+        elif re.match(r'^1\d{12}\.jpg', self.Basename):
+            filenameTimestamp = int(self.Basename[:13]) // 1000
         else:
         # elif (
         #     re.match(r'^IMG_.*', self.Basename)
@@ -177,7 +175,7 @@ class PhotoFile(object):
 
     def ReadInfo(self):
         log.debug('Reading {}'.format(self.Path))
-        self.Md5Sum = md5sum.Md5Sum(self.Path)
+        self.Md5Sum = library.md5sum.Md5Sum(self.Path)
         imageFormat = self.Path.split('.')[-1]
         if imageFormat.lower() in ['jpg', 'jpeg']:
             try:
@@ -217,42 +215,42 @@ class Processor(object):
             photoFile.ReadInfo()
             return photoFile
         elif extension in self.SkipExtensions:
-            log.debug('Skipping {}'.format(filename))
+            log.debug(f'Skipping {filename}')
             return None
         else:
-            log.error('Unknown file extension: %r: %r', filename, extension)
+            log.error(f'Unknown file extension: {filename!r}: {extension!r}')
             if not self.OpenedDir:
                 self.OpenedDir = True
-                md5sum.openDir(filename)
+                library.files.open_dir(filename)
             # raise RuntimeError()
 
 
-def getFilenames(dirs, files, excludeDirs):
-    counter = 0
+def get_filenames(dirs, files, exclude_dirs):
+    filenames_count = 0
     for filename in files:
-        counter += 1
+        filenames_count += 1
         yield filename
 
     for dirName in dirs:
         for root, _, files in os.walk(dirName):
-            if any(root.startswith(excludeDir) for excludeDir in excludeDirs):
-                log.info('{} is excluded'.format(root))
+            if any(root.startswith(exclude_dir) for exclude_dir in exclude_dirs):
+                log.info(f'{root} is excluded')
                 continue
             files = sorted(list(files))
-            log.info('Found {} files in {}'.format(len(files), root))
+            log.info(f'Found {len(files)} files in {root}')
             for filename in files:
-                counter += 1
+                filenames_count += 1
                 yield os.path.join(root, filename)
-                if counter % 500 == 0:
-                    log.info('Yielded {} photo files'.format(counter))
+                if filenames_count % 500 == 0:
+                    log.info(f'Yielded {filenames_count} photo files')
 
-    log.info('Yielded {} photo files'.format(counter))
+    log.info(f'Yielded {filenames_count} photo files')
 
 
 def processDirs(args):
     photoFiles = []
     processor = Processor()
-    for filename in getFilenames(args.dir, args.file, args.exclude):
+    for filename in get_filenames(args.dir, args.file, args.exclude):
         photoFile = processor(filename)
         if photoFile is not None:
             photoFiles.append(photoFile)
