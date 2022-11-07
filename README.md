@@ -1,25 +1,25 @@
 ## Install
 
 ```
-$ export PIP_INDEX_URL=https://pypi.org/simple  # to make sure you're using proper repos
-$ virtualenv venv --python=python3.8
-$ . venv/bin/activate
+export PIP_INDEX_URL=https://pypi.org/simple  # to make sure you're using proper repos
+virtualenv venv --python=python3.8
+. venv/bin/activate
 ```
 
 ## Run
 Scripts to handle files on local computer:
-— find duplicates,
-— check backups.
+* find duplicates,
+* check backups.
 
 ```
 . venv/bin/activate
 
-YD="${HOME}/Yandex.Disk.localized"
+YaDisk="${HOME}/Yandex.Disk.localized"
 
 ./run.py photo-analyze \
-  --dir "${YD}/Photo/phone/" \
-  --dir "${YD}/Фотокамера/" \
-  --exclude "${YD}/Photo/phone/2017-11 Mi5/Pictures"
+  --dir "${YaDisk}/Photo/phone/" \
+  --dir "${YaDisk}/Фотокамера/" \
+  --exclude "${YaDisk}/Photo/phone/2017-11 Mi5/Pictures"
 
 deactivate
 ```

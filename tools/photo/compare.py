@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import argparse
 import hashlib
 import json
@@ -219,25 +217,10 @@ def runPrint(args):
     comparator()
 
 
-def CreateArgumentsParser():
-    parser = argparse.ArgumentParser('Compare dirs')
-    parser.add_argument('--debug', help='Debug logging', action='store_true')
-    subparsers = parser.add_subparsers(help='Modes')
+def populate_calc_parser(parser):
+    parser.add_argument('--mode', help='Choose mode', choices=['old', 'new'], required=True)
+    parser.set_defaults(func=runCalc)
 
-    calcParser = subparsers.add_parser('calc', help='Run calc', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    calcParser.add_argument('--mode', help='Choose mode', choices=['old', 'new'], required=True)
-    calcParser.set_defaults(func=runCalc)
 
-    printParser = subparsers.add_parser('print', help='Run print', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    printParser.set_defaults(func=runPrint)
-
-    return parser
-
-if __name__ == '__main__':
-    parser = CreateArgumentsParser()
-    args = parser.parse_args()
-    logging.basicConfig(format='%(message)s')
-    # logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s')
-    log.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    args.func(args)
-
+def populate_print_parser(parser):
+    parser.set_defaults(func=runPrint)

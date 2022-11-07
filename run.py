@@ -26,6 +26,8 @@ def create_arguments_parser():
     add_subparser('analyze', 'Analyze files', tools.speed.populate_parser)
     add_subparser('photo-parse', 'Parse mobile photos', tools.mobile.analyze.populate_parser)
     add_subparser('photo-analyze', 'Analyze mobile photos', tools.mobile.mobile.populate_parser)
+    add_subparser('photo-calc', 'Run calc', tools.photo.compare.populate_calc_parser)
+    add_subparser('photo-print', 'Run print', tools.photo.compare.populate_print_parser)
 
     return parser
 

@@ -187,7 +187,7 @@ class PhotoFile(object):
     def IsVsco(self):
         if self.Exif:
             return any(
-                if isinstance(value, str) and 'vsco' in value.lower()
+                isinstance(value, str) and 'vsco' in value.lower()
                 for  value in self.Exif.values()
             )
 

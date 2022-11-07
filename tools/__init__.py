@@ -6,3 +6,4 @@ import tools.model
 import tools.speed
 import tools.tofmal
 import tools.mobile
+import tools.photo
