@@ -4,10 +4,10 @@ import platform
 
 from collections import defaultdict
 from enum import Enum
+from functools import cached_property
 from typing import Dict, List, Tuple
 
 import attr
-
 import logging
 log = logging.getLogger(__file__)
 
@@ -74,33 +74,28 @@ defaults = Defaults()
 
 
 def runCalc(args):
-    rootDir, hashesFile = defaults.GetRootLocation(args.mode), defaults.GetJsonLocation(args.mode)
-    if not os.path.isdir(rootDir):
-        raise RuntimeError(f'{rootDir} is not a directory')
-    else:
-        log.info(f'Detected root at {rootDir}')
+    root = defaults.GetRootLocation(args.mode)
+    result_file = defaults.GetJsonLocation(args.mode)
+    if not os.path.isdir(root):
+        raise RuntimeError(f'{root} is not a directory')
 
-    log.info(f'Calculating stats in {rootDir} and writing to {hashesFile}')
+    log.info(f'Calculating stats in root {root} and writing to {result_file}')
 
-    hashes = Hashes(
-        filename=hashesFile,
-        root=rootDir,
-    )
+    hashes = Hashes(root=root)
 
-    for root, _, files in os.walk(rootDir):
-        hash_by_name = {file: Md5Sum(os.path.join(root, file)) for file in files}
+    for sub_root, _, files in os.walk(root):
+        hash_by_name = {file: Md5Sum(os.path.join(sub_root, file)) for file in files}
         if not hash_by_name:
             continue
-        localized_root = root.replace(rootDir + os.sep, '').replace(os.sep, '/')
+        localized_root = sub_root.replace(root + os.sep, '').replace(os.sep, '/')
         log.info(f'Found {len(hash_by_name):3d} files in {localized_root!r}')
         hashes.tree[localized_root] = hash_by_name
 
-    hashes.Save()
+    hashes.Save(result_file)
 
 
 @attr.s
 class Hashes:
-    filename: str = attr.ib()
     root: str = attr.ib()
     tree: Dict[str, Dict[str, str]] = attr.ib(default={})
 
@@ -109,20 +104,15 @@ class Hashes:
         with open(filename) as f:
             data = json.load(f)
 
-        return Hashes(
-            filename=filename,
-            root=data['root'],
-            tree=data['tree'],
-        )
+        hashes = Hashes(**data)
+        log.info(f'Loaded hashes for {hashes.root}')
+        return hashes
 
-    def Save(self):
-        log.info(f'Saving info about {self.root} to {self.filename}')
-        with open(self.filename, 'w') as f:
+    def Save(self, filename):
+        log.info(f'Saving info about {self.root} to {filename}')
+        with open(filename, 'w') as f:
             json.dump(
-                {
-                    'root': self.root,
-                    'tree': self.tree,
-                },
+                attr.asdict(self),
                 f,
                 sort_keys=True,
                 indent=4,
@@ -130,116 +120,114 @@ class Hashes:
                 ensure_ascii=False,
             )
 
-    @property
-    def files_by_hash_index(self):
-        log.info('Building new files index')
-        files_by_hash = defaultdict(list)
-        for new_dir, new_hashes in self.tree.items():
-            for new_file, new_hash in new_hashes.items():
-                files_by_hash[new_hash].append(new_dir)
-                if len(files_by_hash[new_hash]) >= 4:
-                    log.info(f'File {new_file!r} with hash {new_hash} is among {len(files_by_hash[new_hash])} dirs')
+    @cached_property
+    def dirs_by_hash(self):
+        log.info(f'Building files index for {self.root}')
+        index = defaultdict(list)
+        for dir_name, hashes in self.tree.items():
+            for file_name, file_hash in hashes.items():
+                index[file_hash].append(dir_name)
+                dirs_count = len(index[file_hash])
+                if dirs_count >= 4:
+                    log.info(f'File {file_name!r} with hash {file_hash} is among {dirs_count} dirs')
 
         return index
 
-    @property
-    def clean_tree_items(self) -> List[Tuple[str, List[str]]]:
+    @cached_property
+    def clean_tree(self) -> Dict[str, List[str]]:
         skipDirs = [' Previews.lrdata', 'Lightroom Settings']
         skipFiles = ['.DS_Store']
 
-        tree_items = []
-        for oldDir, oldHashes in self.tree.items():
-            if any(skipDir in oldDir for skipDir in skipDirs):
+        tree_items = {}
+        for dir_names, hashes in self.tree.items():
+            if any(skipDir in dir_names for skipDir in skipDirs):
                 continue
-            hashes = [
-                (filename, fileHash)
-                for filename, fileHash in oldHashes.iteritems()
-                if filename in skipFiles
-            ]
-            if not hashes:
-                continue
-            hashes.sort()
-            tree_items.append(oldDir, hashes)
+            hashes = {
+                filename: fileHash
+                for filename, fileHash in hashes.items()
+                if filename not in skipFiles
+            }
+            if hashes:
+                tree_items[dir_names] = hashes
 
-        tree_items.sort()
         return tree_items
 
 
-class Comparator:
-    def __init__(self, old_hashes_file: str, new_hashes_file: str):
-        self.OldHashes = Hashes.load(old_hashes_file)
-        self.NewHashes = Hashes.load(new_hashes_file)
+def visualize_states(exists: list):
+    if any(exists):
+        index = 0
+        delta = 80
+        result = ''
+        while index < len(exists):
+            part = exists[index:index + delta]
+            line = ''.join(['X' if p else '_' for p in part])
+            add = ' ' * (delta - len(line))
+            result += '|{}|{} {} of {} are missing\n'.format(line, add, sum(1 for p in part if not p), len(part))
+            index += delta
+        return result
+    else:
+        return 'All files are missing\n'
 
-    def VisualizeStates(self, exists):
-        if any(exists):
-            index = 0
-            delta = 80
-            result = ''
-            while index < len(exists):
-                part = exists[index:index + delta]
-                line = ''.join(['X' if p else '_' for p in part])
-                add = ' ' * (delta - len(line))
-                result += '|{}|{} {} of {} are missing\n'.format(line, add, sum(1 for p in part if not p), len(part))
-                index += delta
-            return result
-        else:
-            return 'All files are missing\n'
 
-    def __call__(self):
-        new_files_hashes = self.NewHashes.files_by_hash_index
-        for oldDir, oldHashes in self.OldHashes.clean_tree_items:
-            dirs = defaultdict(int)
-            exists = []
-            for fileName, fileHash in oldHashes:
-                fileDirs = new_files_hashes.get(fileHash, [])
-                exists.append(bool(fileDirs))
-                for d in fileDirs:
-                    dirs[d] += 1
-            if not all(exists):
-                examples, missingFiles = [], []
-                for fileExists, (fileName, fileHash) in zip(exists, oldHashes):
-                    if not fileExists:
-                        examples.append('  {} ({})\n'.format(logDir(fileName), fileHash))
-                        missingFiles.append(fileName)
-                showSize = 10
-                log.info('{} out of {} files from {} are missing, file examples (up to {}):\n{}{}'.format(
-                    sum(1 for e in exists if not e),
-                    len(oldHashes),
-                    logDir(oldDir),
-                    showSize,
-                    self.VisualizeStates(exists),
-                    ''.join(examples[:showSize]).rstrip(),
-                ))
-                baseDir = os.path.basename(oldDir)
-                if len([c for c in baseDir if c.isdigit()]) < 8:
-                    baseDir = '_'.join(oldDir.split(os.sep)[-2:])
-                dstDir = u'/Users/burmisha/Toshiba_save/Photo/{}'.format(baseDir)
-#                 log.info(u'''Cmd to copy them all:
-# mkdir '{dstDir}'
-# cp '{srcDir}'/{{{files}}} '{dstDir}/'
-# '''.format(
-#     dstDir=dstDir,
-#     srcDir=os.path.join(self.OldHashes.Root, oldDir),
-#     files=','.join(missingFiles),
-# ))
+def compare(*, old_hashes_file: str, new_hashes_file: str):
+    old_hashes = Hashes.load(old_hashes_file)
+    new_hashes = Hashes.load(new_hashes_file)
+    for oldDir, oldHashes in old_hashes.clean_tree.items():
+        relevant_dirs = defaultdict(int)
+        for fileName, fileHash in oldHashes.items():
+            fileDirs = new_hashes.dirs_by_hash[fileHash]
+            for d in fileDirs:
+                relevant_dirs[d] += 1
+
+        if sum(relevant_dirs.values()) == len(oldHashes):
+            relevant_dirs_count = len(relevant_dirs)
+            items = sorted(relevant_dirs.items())
+            files_count = len(oldHashes)
+            if relevant_dirs_count >= 2:
+                examples = '\n'.join(f'  {dirName!r} ({count} files)' for dirName, count in items)
+                log.info(f'Found all {files_count:3d} files from {oldDir!r} in {relevant_dirs_count} dirs:\n{examples}\n')
+            elif relevant_dirs_count == 1:
+                log.info(f'Found all {files_count:3d} files from {oldDir!r} in {items[0][0]!r}')
             else:
-                if len(dirs) >= 2:
-                    pass
-                    examples = '\n'.join('  {} ({} files)'.format(logDir(dirName), count) for dirName, count in sorted(dirs.items()))
-                    # log.info('All {} files from {} are among {} dirs:\n{}\n'.format(len(oldHashes), logDir(oldDir), len(dirs), examples))
-                elif len(dirs) == 1:
-                    pass
-                    # log.debug('All {} files from {} are were found in {}'.format(len(oldHashes), logDir(oldDir), logDir(dirs.keys()[0])))
-                else:
-                    raise
-                
+                raise RuntimeError('No relevant dirs')
 
-def runPrint(args):
-    comparator = Comparator(
+        else:
+            examples, missingFiles = [], []
+            exists = []
+            for fileName, fileHash in oldHashes.items():
+                fileExists = bool(new_hashes.dirs_by_hash[fileHash])
+                exists.append(fileExists)
+                if not fileExists:
+                    examples.append('  {fileName!r} ({fileHash})')
+                    missingFiles.append(fileName)
+
+            limit = 10
+            splitter = '\n'
+            log.info(
+                f'{sum(1 for e in exists if not e)} out of {len(oldHashes)} files from {oldDir!r} are missing, '
+                f'file examples (up to {limit}):\n{visualize_states(exists)}'
+                f'{splitter.join(examples[:limit])}'
+            )
+            baseDir = os.path.basename(oldDir)
+            if len([c for c in baseDir if c.isdigit()]) < 8:
+                baseDir = '_'.join(oldDir.split(os.sep)[-2:])
+
+            dstDir = '/Users/burmisha/Toshiba_save/Photo/{baseDir}'
+            log.debug(f'''Cmd to copy them all:
+mkdir '{dstDir}'
+cp '{srcDir}'/{{{files}}} '{dstDir}/'
+'''.format(
+    dstDir=dstDir,
+    srcDir=os.path.join(old_hashes.root, oldDir),
+    files=','.join(missingFiles),
+))
+
+
+def runCompare(args):
+    compare(
         old_hashes_file=defaults.GetJsonLocation(Mode.Old),
-        new_hashes_file=defaults.GetJsonLocation(Mode.New),
+        new_hashes_file=defaults.GetJsonLocation(Mode.Old),
     )
-    comparator()
 
 
 def populate_calc_parser(parser):
@@ -247,5 +235,5 @@ def populate_calc_parser(parser):
     parser.set_defaults(func=runCalc)
 
 
-def populate_print_parser(parser):
-    parser.set_defaults(func=runPrint)
+def populate_compare_parser(parser):
+    parser.set_defaults(func=runCompare)

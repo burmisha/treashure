@@ -4,7 +4,6 @@ import argparse
 import time
 
 import tools
-import library
 
 import logging
 log = logging.getLogger('treashure')
@@ -27,7 +26,7 @@ def create_arguments_parser():
     add_subparser('photo-parse', 'Parse mobile photos', tools.mobile.analyze.populate_parser)
     add_subparser('photo-analyze', 'Analyze mobile photos', tools.mobile.mobile.populate_parser)
     add_subparser('photo-calc', 'Run calc', tools.photo.compare.populate_calc_parser)
-    add_subparser('photo-print', 'Run print', tools.photo.compare.populate_print_parser)
+    add_subparser('photo-compare', 'Run compare', tools.photo.compare.populate_compare_parser)
 
     return parser
 
@@ -49,4 +48,4 @@ if __name__ == '__main__':
     finally:
         finish_time = time.time()
         duration = finish_time  - start_time
-        log.info('Completed in %.2f seconds', duration)
+        log.info(f'Completed in {duration:.3f} seconds', )
