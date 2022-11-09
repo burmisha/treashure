@@ -1,9 +1,8 @@
-#!/usr/bin/env python
-import argparse
 import logging
 log = logging.getLogger(__file__)
 
 import pprint
+import json
 
 # https://stuvel.eu/flickrapi
 import flickrapi
@@ -33,9 +32,7 @@ class Photo(object):
 
 
 class Flickr(object):
-    def __init__(self, username):
-        apiKey = u'11dbfd0f5ad9e189fedc967a9eb62f7a'
-        apiSecret = u'5a2d1c64c0164e67'
+    def __init__(self, *, username: str, apiKey: str, apiSecret: str):
         self.FlickrAPI = flickrapi.FlickrAPI(apiKey, apiSecret, format='parsed-json')
 
         nsid = self.FlickrAPI.people.findByUsername(username=username)
@@ -125,23 +122,20 @@ def FormGeoJson(photos):
     return data
 
 
-def main(args):
-    flickr = Flickr('burmisha')
+def run_parse(args):
+    with open(args.secrets) as f:
+        secrets = json.load(f)
+
+    flickr = Flickr(
+        username=secrets['flickr']['username'],
+        apiKey=secrets['flickr']['api_key'],
+        apiSecret=secrets['flickr']['api_secret'],
+    )
     photos = list(flickr.GetPhotos('72157650399997108'))
     pprint.pprint(FormGeoJson(photos))
 
 
-def CreateArgumentsParser():
-    parser = argparse.ArgumentParser('Prepare photos', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+def populate_parser(parser):
     parser.add_argument('--debug', help='Debug logging', action='store_true')
-    return parser
-
-
-if __name__ == '__main__':
-    parser = CreateArgumentsParser()
-    args = parser.parse_args()
-    logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s')
-    log.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    log.info('Start')
-    main(args)
-    log.info('Finish')
+    parser.add_argument('--secrets', help='Secrets file', default='secrets.json')
+    parser.set_defaults(func=run_parse)
