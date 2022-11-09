@@ -5,14 +5,16 @@ import platform
 from collections import defaultdict
 from enum import Enum
 from functools import cached_property
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import attr
 import logging
 log = logging.getLogger(__file__)
 
 from library.md5sum import Md5Sum
-from library.files import walk
+
+
+HOME_DIR = os.environ['HOME']
 
 
 class Platform(str, Enum):
@@ -38,7 +40,7 @@ def get_platform() -> Platform:
 
 ya_disk_dir = {
     Platform.Windows: os.path.join('D:' + os.sep, 'YandexDisk'),
-    Platform.macOS: os.path.join(os.environ['HOME'], 'Yandex.Disk.localized'),
+    Platform.macOS: os.path.join(HOME_DIR, 'Yandex.Disk.localized'),
 }[get_platform()]
 
 
@@ -212,15 +214,11 @@ def compare(*, old_hashes_file: str, new_hashes_file: str):
             if len([c for c in baseDir if c.isdigit()]) < 8:
                 baseDir = '_'.join(oldDir.split(os.sep)[-2:])
 
-            dstDir = '/Users/burmisha/Toshiba_save/Photo/{baseDir}'
+            dstDir = f'{HOME_DIR}/Toshiba_save/Photo/{baseDir}'
             log.debug(f'''Cmd to copy them all:
 mkdir '{dstDir}'
-cp '{srcDir}'/{{{files}}} '{dstDir}/'
-'''.format(
-    dstDir=dstDir,
-    srcDir=os.path.join(old_hashes.root, oldDir),
-    files=','.join(missingFiles),
-))
+cp '{os.path.join(old_hashes.root, oldDir)}'/{{{",".join(missingFiles)}}} '{dstDir}/'
+''')
 
 
 def runCompare(args):
