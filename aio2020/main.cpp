@@ -24,6 +24,8 @@ int main(int argc, char** argv) {
     // написать на Go Hello World
     // https://yadi.sk/d/xTFWy38y3GBAgS
 
+    // https://github.com/shodanium/freq
+
     int length = 65536;
     char * buffer = new char [length];
 
