@@ -83,6 +83,7 @@ def get_activity_timezone(fit_file: fitparse.FitFile) -> Optional[datetime.timez
 
         timedelta = local_timestamp - timestamp
         if timedelta not in [
+            datetime.timedelta(seconds=7200),
             datetime.timedelta(seconds=10800),
             datetime.timedelta(seconds=14400),
         ]:

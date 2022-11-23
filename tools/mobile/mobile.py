@@ -10,7 +10,7 @@ import PIL.ExifTags
 import library
 from functools import cached_property
 import attr
-from typing import List
+from typing import List, Optional
 
 import logging
 log = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def timestampFromStr(dateStr: str, fmt: str) -> int:
     tmpStr = formatter(dateStr)
     tmpFmt = formatter(fmt)
     timestamp = int(datetime.datetime.strptime(tmpStr, fmt).timestamp())
-    if 1300000000 < timestamp < 1600000000:
+    if 1300000000 < timestamp < 1700000000:
         pass
     elif timestamp == 0:
         log.warn('Timestamp is 0')
@@ -90,17 +90,49 @@ def test_parse_timestamp():
 test_parse_timestamp()
 
 
+def dt_from_args(
+    dt: datetime.datetime,
+    milliseconds: Optional[int],
+    offset: Optional[str],
+) -> datetime.datetime:
+    if milliseconds:
+        assert 0 <= milliseconds < 1000
+        dt = dt.replace(microsecond=1000 * milliseconds)
+
+    if offset:
+        timedelta = {
+            '+01:00': datetime.timedelta(seconds=3600 * 1),
+            '+02:00': datetime.timedelta(seconds=3600 * 2),
+            '+03:00': datetime.timedelta(seconds=3600 * 3),
+            '+04:00': datetime.timedelta(seconds=3600 * 4),
+            '+05:00': datetime.timedelta(seconds=3600 * 5),
+        }[offset]
+        dt = dt.replace(tzinfo=datetime.timezone(timedelta))
+
+    return dt
+
+
+@attr.s
 class PhotoFile(object):
-    def __init__(self, path: str):
-        self.Path = path
+    Path: str = attr.ib()
 
     @property
     def photo_info(self):
         return PhotoInfo(
             path=self.Path,
             md5sum=self.Md5Sum,
-            timestamps=self.Timestamps,
+            timestamps=self.timestamps,
         )
+
+    def __str__(self):
+        timestamps = [
+            datetime.datetime.utcfromtimestamp(ts) for ts in self.timestamps
+        ]
+
+        if len(timestamps) == 1:
+            timestamps = timestamps[0]
+
+        return f'photo {self.Basename}'
 
     @property
     def Basename(self):
@@ -144,47 +176,73 @@ class PhotoFile(object):
         return None
 
     @cached_property
-    def Timestamps(self):
-        timestamps = set()
-        filenameTimestamp = parse_timestamp(self.Basename)
-        if filenameTimestamp is not None:
-            timestamps.add(filenameTimestamp)
-        else:
-            log.debug(f'Name {self.Basename!r} has no date: {filenameTimestamp}')
+    def datetimes(self) -> List[datetime.datetime]:
+        datetimes = set()
+        subsecs = set()
+        offsets = set()
+
+        # TODO: parse TS
+        # filenameTimestamp = parse_timestamp(self.Basename)
+        # if filenameTimestamp:
+        #     timestamps.add(filenameTimestamp)
+        # else:
+        #     log.debug(f'Name {self.Basename!r} has no date: {filenameTimestamp}')
 
         if self.Exif:
+            datetime_exif = {}
             for key, value in self.Exif.items():
                 lowerKey = key.lower()
-                if key in [
-                    'DateTime',
-                    'DateTimeDigitized',
-                    'DateTimeOriginal',
-                ]:
-                    assert re.match(r'^\d{4}(:\d{2}){2} (\d{2})(:\d{2}){2}$', value)
-                    timestamp = timestampFromStr(value, '%Y-%m-%d %H-%M-%S')
-                    log.debug(f'Date {key} is {value} ({timestamp})')
-                    timestamps.add(timestamp)
-                elif key in [
-                    'SubsecTime',
-                    'SubsecTimeDigitized',
-                    'SubsecTimeOriginal',
-                    'ExposureTime',
-                ]:
-                    pass
-                elif 'date' in lowerKey or 'time' in lowerKey:
-                    raise RuntimeError(f'Unknown datetime key: {key!r} {value!r} in {self.Path}')
-        timestamps = sorted(list(timestamps))
-        if not timestamps:
-            log.warn(f'No timestamps in {self.Path}')
-            # raise RuntimeError('No timestamps')
-        elif len(timestamps) > 3:
-            # yes, they exist
-            raise RuntimeError(f'Too many timestamps: {timestamps} in {self.Path}')
-        return timestamps
+                if 'date' in lowerKey or 'time' in lowerKey:
+                    datetime_exif[key] = value
+                    if key in ['DateTime', 'DateTimeDigitized', 'DateTimeOriginal']:
+                        datetimes.add(datetime.datetime.strptime(value, '%Y:%m:%d %H:%M:%S'))
+                    elif key in ['OffsetTime', 'OffsetTimeOriginal', 'OffsetTimeDigitized']:
+                        offsets.add(value)
+                    elif key in ['SubsecTime', 'SubsecTimeDigitized', 'SubsecTimeOriginal']:
+                        subsecs.add(int(value))
+                    elif key in ['ExposureTime', 'CompositeImageExposureTimes']:
+                        pass
+                    else:
+                        raise RuntimeError(f'Unknown datetime key: {key!r}, value {value!r} in {self.Path}')
+            if datetime_exif:
+                log.debug(f'datetime_exif: {datetime_exif}')
+            else:
+                log.info(f'No date in exif for {self.Path}: {self.Exif}')
+        else:
+            log.warn(f'No EXIF in {self.Path}')
 
+        datetimes = sorted(list(datetimes))
+        if not datetimes:
+            log.warn(f'No datetimes in {self.Path}')
+            # raise RuntimeError('No timestamps')
+        elif len(datetimes) > 3:
+            # yes, they exist
+            raise RuntimeError(f'Too many datetimes: {datetimes} in {self.Path}')
+
+        subsec = None
+        if len(subsecs) == 1:
+            subsec = list(subsecs)[0]
+        elif len(subsecs) > 1:
+            raise RuntimeError(f'Too many subsecs: {subsecs}')
+
+        offset = None
+        if len(offsets) == 1:
+            offset = list(offsets)[0]
+        elif len(offsets) > 1:
+            raise RuntimeError(f'Too many offsets: {offsets}')
+
+        return [
+            dt_from_args(datetime, milliseconds=subsec, offset=offset)
+            for datetime in datetimes
+        ]
+            
 
     @cached_property
-    def IsVsco(self):
+    def timestamps(self) -> List[int]:
+        return [int(dt.timestamp()) for dt in self.datetimes]
+
+    @cached_property
+    def is_vsco(self):
         if self.Exif:
             return any(
                 isinstance(value, str) and 'vsco' in value.lower()
