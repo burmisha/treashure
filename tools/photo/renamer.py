@@ -17,7 +17,7 @@ class FileMover:
 
     def add(self, src, dst):
         if src == dst:
-            log.info(f'Same location, skip: {src!r}')
+            log.debug(f'Same location, skip: {src!r}')
             return
 
         if src in self.src_set:
@@ -40,30 +40,40 @@ class FileMover:
         return len(self.move_list)
 
 
+def file_is_ok(filename: str) -> bool:
+    if 'Псевдоним _KOR1786.jpg' in filename:
+        return False
+    return True
+
+
 def rename_dir(
     *,
     dir_name: str,
-    move: bool=False
+    move: bool=False,
+    add_log: bool=False,
 ):
     photo_files = [
         tools.mobile.mobile.PhotoFile(file)
         for file in library.files.walk(dir_name, extensions=['JPG', 'jpg'])
+        if file_is_ok(file)
     ]
+    photo_files.sort()
+
+    log.warn(f'Checking {len(photo_files)} photo files in {dir_name}')
 
     photos_by_ts = collections.defaultdict(list)
     ok_count = 0
     for photo in photo_files:
-        if len(photo.timestamps) == 1 and photo.is_vsco:
-            timestamp = photo.timestamps[0]
-            photos_by_ts[timestamp].append(photo)
+        if photo.timestamp:
+            photos_by_ts[photo.timestamp].append(photo)
             ok_count += 1
         else:
-            log.warn(f'Skipping {photo}: {photo.timestamps}')
+            log.warn(f'Skipping {photo.Path}')
 
     mover = FileMover()
     for timestamp, photos in sorted(photos_by_ts.items()):
         add_index = len(photos) > 1
-        photos.sort(key=lambda photo: photo.datetimes[0])
+        photos.sort(key=lambda photo: photo.datetime)
 
         for index, photo in enumerate(photos, 1):
             dst_basename = NAME_FORMAT.format(
@@ -78,7 +88,7 @@ def rename_dir(
 
     if move:
         mover.move()
-    else:
+    elif add_log:
         for src, dst in mover.move_list:
             log.info(f'will move {src!r} {dst!r}')
 
@@ -87,10 +97,12 @@ def run_rename(args):
     rename_dir(
         dir_name=args.dir,
         move=args.move,
+        add_log=args.add_log,
     )
 
 
 def populate_parser(parser):
     parser.add_argument('--dir', help='Add dir to rename', required=True)
     parser.add_argument('--move', help='Do move', action='store_true')
+    parser.add_argument('--add-log', help='log', action='store_true')
     parser.set_defaults(func=run_rename)

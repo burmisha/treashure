@@ -45,9 +45,11 @@ if __name__ == '__main__':
     try:
         args.func(args)
     except Exception as e:
-        log.exception(f'Error: {e}')
-        raise
-    finally:
+        finish_time = time.time()
+        duration = finish_time  - start_time
+        log.exception(f'Failed after {duration:.3f} seconds, exception: {e}')
+        exit(1)
+    else:
         finish_time = time.time()
         duration = finish_time  - start_time
         log.info(f'Completed in {duration:.3f} seconds', )
