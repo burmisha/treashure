@@ -77,9 +77,9 @@ def rename_dir(
 
         for index, photo in enumerate(photos, 1):
             dst_basename = NAME_FORMAT.format(
-                dt=photo.datetimes[0],
+                dt=photo.datetime,
                 suffix=f'-{index}' if add_index else '',
-                extension=photo.Basename.split('.')[-1],
+                extension=photo.extension,
             )
             dst_file = os.path.join(os.path.dirname(photo.Path), dst_basename)
             mover.add(photo.Path, dst_file)

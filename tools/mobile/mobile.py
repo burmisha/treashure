@@ -174,6 +174,7 @@ def test_get_dt_from_exif():
 
 test_get_dt_from_exif()
 
+
 @attr.s
 class PhotoFile(object):
     Path: str = attr.ib()
@@ -186,9 +187,13 @@ class PhotoFile(object):
             timestamps=[self.timestamp],
         )
 
-    @property
+    @cached_property
     def Basename(self):
         return os.path.basename(self.Path)
+
+    @cached_property
+    def extension(self):
+        return self.Basename.split('.')[-1],
 
     @cached_property
     def Exif(self):
