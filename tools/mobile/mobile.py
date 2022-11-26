@@ -10,7 +10,7 @@ import PIL.ExifTags
 import library
 from functools import cached_property
 import attr
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import logging
 log = logging.getLogger(__name__)
@@ -23,9 +23,9 @@ def timestampFromStr(dateStr: str, fmt: str) -> int:
     tmpStr = formatter(dateStr)
     tmpFmt = formatter(fmt)
     timestamp = int(datetime.datetime.strptime(tmpStr, tmpFmt).timestamp())
-    if 1300000000 < timestamp < 1700000000:
+    if 1100000000 < timestamp < 1700000000:
         pass
-    elif timestamp < 1000000000:
+    elif timestamp < 100000000:
         log.warn(f'Timestamp {timestamp} is too old, skippping')
         return None
     else:
@@ -48,35 +48,33 @@ def fromDict(data: dict) -> PhotoInfo:
     )
 
 
+TIMESTAMP_RE = (
+    r'('
+    r'20\d{2}'
+    r'([-_\.:])?'
+    r'\d{2}'
+    r'([-_\.:])?'
+    r'\d{2}'
+    r'([-_\.: ])?'
+    r'\d{2}'
+    r'([-_\.:])?'
+    r'\d{2}'
+    r'([-_\.:])?'
+    r'\d{2}'
+    r')[-_\.~ ]'
+)
+TS_PREFIXES = [prefix + TIMESTAMP_RE for prefix in [r'^', r'[a-zA-Z-_]']]
+
+
 def parse_timestamp(basename: str) -> int:
-    if (
-        re.match(r'^\d{4}(-\d{2}){2} \d{2}([-\.]\d{2}){2}( 1)?\.\w{3,4}$', basename)
-        or re.match(r'^\d{4}(-\d{2}){2} \d{2}([-\.]\d{2}){2}_\d{10}\.\w{3}$', basename)
-    ):
-        return timestampFromStr(basename[:19], '%Y-%m-%d %H-%M-%S')
-    elif re.match(r'^wp_ss_\d{8}_\d{4}\.\w{3}$', basename):
-        return timestampFromStr(basename[6:18], '%Y%m%d_%H%M')
-    elif re.match(r'^Screenshot_\d{4}(-\d{2}){5}(-\d{3})?_.*.(png|jpg)$', basename):
-        # skipping subseconds
-        return timestampFromStr(basename[11:30], '%Y-%m-%d-%H-%M-%S')
-    elif re.match(r'^IMG_\d{8}_\d{6}(_HDR|_HHT|_1)?\.(JPG|jpg|dng)$', basename):
-        return timestampFromStr(basename[4:19], '%Y%m%d_%H%M%S')
-    elif re.match(r'^WP_\d{8}(_\d{2}){3}_(Pro|Smart|Panorama|Selfie|SmartShoot).*\.jpg$', basename):
-        return timestampFromStr(basename[3:20], '%Y%m%d_%H_%M_%S')
-    elif re.match(r'^DOS-\d{4}(-\d{2}){2} \d{2}(_\d{2}){2}Z\.jpg$', basename):
-        return timestampFromStr(basename[4:23], '%Y-%m-%d %H_%M_%S')
-    elif re.match(r'^1\d{12}\.jpg', basename):
-        return int(basename[:13]) // 1000
-    elif re.match(r'^Screenshot_\d{8}-\d{6}(~2)?\.png$', basename):
-        return timestampFromStr(basename[11:26], '%Y%m%d-%H%M%S')
-    elif re.match(r'^PHOTO_\d{8}_\d{6}(_\d)?\.jpg$', basename):
-        return timestampFromStr(basename[6:21], '%Y%m%d_%H%M%S')
-    elif re.match(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b', basename):
-        return timestampFromStr(basename[:19], '%Y-%m-%d %H:%M:%S')
-    elif re.match(r'^\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\b', basename):
-        return timestampFromStr(basename[:19], '%Y-%m-%d %H.%M.%S')
-    elif re.match(r'^\d{4}-burmisha-\d{14}\b', basename):
-        return timestampFromStr(basename[14:28], '%Y%m%d%H%M%S')
+    for ts_re in TS_PREFIXES:
+        res = re.search(ts_re, basename)
+        if res:
+            res = ''.join([l for l in res.group(1) if l.isdigit()])
+            return timestampFromStr(res, '%Y%m%d%H%M%S')
+
+    if len([i for i in basename if i.isdigit()]) >= 14:
+        log.info(f'No dt in {basename}')
 
     return None
 
@@ -89,7 +87,20 @@ def test_parse_timestamp():
         ('PHOTO_20191231_190906_0.jpg', 1577804946),
         ('2021-11-06 16:18:21.jpg', 1636201101),
         ('2020-04-24 03.00.49 3.jpg', 1587682849),
-        ('1305-burmisha-20130524232554', 1369423554),
+        ('1305-burmisha-20130524232554.png', 1369423554),
+        ('photo_2018-05-10_17-13-31.jpg', 1525958011),
+        ('photo_2018_05-10_17-13-31.jpg', 1525958011),
+        ('photo_2018.05-10_17-13-31.jpg', 1525958011),
+        ('photo_2018:05-10_17-13-31.jpg', 1525958011),
+        ('20180510171331.png', 1525958011),
+        ('2018-05-10 17:13:31.png', 1525958011),
+        ('2007_04_03-07_58_17.png', 1175569097),
+        ('photo311519012136790160.png', None),
+        ('11-49472976-784857-800-100.jpg', None),
+        ('XX-49472976-784857-800-100.jpg', None),
+        ('2007_04_26-16_37_11.jpg', 1177587431),
+        ('P-00930-2007_04_26-16_37_11.jpg', 1177587431),
+        ('IMG_20191028_081550_384.jpg', 1572236150),
     ]:
         parsed = parse_timestamp(basename)
         assert parsed == expected, f'Broken parse for {basename}:\n    parsed:\t\t{parsed}\n    expected:\t{expected}'
@@ -97,6 +108,55 @@ def test_parse_timestamp():
 
 test_parse_timestamp()
 
+
+def get_timedelta(offset: str) -> datetime.timedelta:
+    td = {
+        '+01:00': datetime.timedelta(seconds=3600 * 1),
+        '+02:00': datetime.timedelta(seconds=3600 * 2),
+        '+03:00': datetime.timedelta(seconds=3600 * 3),
+        '+04:00': datetime.timedelta(seconds=3600 * 4),
+        '+05:00': datetime.timedelta(seconds=3600 * 5),
+    }[offset]
+    return td
+
+
+def cut_large_hour(dt_str: str) -> Tuple[str, int]:
+    date, time = dt_str.split(' ')
+    hours, minutes = time.split(':', 1)
+    hours = int(hours)
+    if hours >= 24:
+        hours = hours - 24
+        return f'{date} {hours}:{minutes}', 1
+    else:
+        return dt_str, 0
+        days_delta = 0
+
+
+def test_cut_large_hour():
+    for dt, expected_dt, expected_days in [
+        ('2010-11-22 24:40:20', '2010-11-22 0:40:20', 1),
+        ('2010-11-22 23:41:21', '2010-11-22 23:41:21', 0),
+    ]:
+        result_dt, result_days = cut_large_hour(dt)
+        assert result_dt == expected_dt, f'{result_dt!r} expected {expected_dt!r}'
+        assert result_days == expected_days, f'{result_days!r} expected {expected_days!r}'
+
+
+test_cut_large_hour()
+
+
+def get_microsecond(subsec: str) -> int:
+    if subsec is not None:
+        millisecond = int(subsec.strip('\x00'))
+        # units are not specified
+        if 0 <= millisecond < 1000:
+            return 1000 * millisecond
+        elif 1000 <= millisecond < 999999:
+            return millisecond
+        else:
+            raise ValueError(f'Invalid millisecond: {millisecond}')
+
+    return 0
 
 def get_dt_from_exif(exif: dict, suffix: str):
     dt_value = exif.get(f'DateTime{suffix}')
@@ -110,40 +170,9 @@ def get_dt_from_exif(exif: dict, suffix: str):
     if not dt_value:
         return None
 
-    microsecond = 0
-    if subsec_value is not None:
-        millisecond = int(subsec_value.strip('\x00'))
-        # units are not specified
-        if 0 <= millisecond < 1000:
-            microsecond = 1000 * millisecond
-        elif 1000 <= millisecond < 999999:
-            microsecond = millisecond
-        else:
-            raise ValueError(f'Invalid millisecond: {millisecond}')
-    else:
-        millisecond = 0
-
-    if offset_value:
-        timedelta = {
-            '+01:00': datetime.timedelta(seconds=3600 * 1),
-            '+02:00': datetime.timedelta(seconds=3600 * 2),
-            '+03:00': datetime.timedelta(seconds=3600 * 3),
-            '+04:00': datetime.timedelta(seconds=3600 * 4),
-            '+05:00': datetime.timedelta(seconds=3600 * 5),
-        }[offset_value]
-        tzinfo = datetime.timezone(timedelta)
-    else:
-        tzinfo = None
-    
-    date, time = dt_value.split(' ')
-    hours, minutes = time.split(':', 1)
-    hours = int(hours)
-    if hours >= 24:
-        hours = hours - 24
-        days_delta = 1
-        dt_value = f'{date} {hours}:{minutes}'
-    else:
-        days_delta = 0
+    microsecond = get_microsecond(subsec_value)
+    tzinfo = datetime.timezone(get_timedelta(offset_value)) if offset_value else None
+    dt_value, days_delta = cut_large_hour(dt_value)
     dt = datetime.datetime.strptime(dt_value, '%Y:%m:%d %H:%M:%S')
     dt += datetime.timedelta(days=days_delta)
     dt = dt.replace(microsecond=microsecond, tzinfo=tzinfo)
@@ -151,25 +180,34 @@ def get_dt_from_exif(exif: dict, suffix: str):
 
 
 def test_get_dt_from_exif():
-    exif = {'DateTime': '2022:04:17 15:13:50', 'SubsecTime': '00'}
-    dt = get_dt_from_exif(exif, suffix='')
-    assert dt == datetime.datetime(2022, 4, 17, 15, 13, 50), f'{dt!r}'
-
-    exif = {
-        'DateTimeOriginal': '2022:07:09 11:39:04',
-        'OffsetTimeOriginal': '+05:00',
-        'SubsecTimeOriginal': '005',
-    }
-    dt = get_dt_from_exif(exif, suffix='Original')
-    assert dt == datetime.datetime(2022, 7, 9, 11, 39, 4, 5000, tzinfo=datetime.timezone(datetime.timedelta(seconds=18000))), f'{dt!r}'
-
-    exif = {'DateTimeDigitized': '2019:09:22 24:40:46'}
-    dt = get_dt_from_exif(exif, suffix='Digitized')
-    assert dt == datetime.datetime(2019, 9, 23, 0, 40, 46), f'{dt!r}'
-
-    exif = {'DateTimeDigitized': '2019:09:22 14:40:46', 'SubsecTimeDigitized': '919503\x00'}
-    dt = get_dt_from_exif(exif, suffix='Digitized')
-    assert dt == datetime.datetime(2019, 9, 22, 14, 40, 46, 919503), f'{dt!r}'
+    for exif, suffix, dt in [
+        (
+            {'DateTime': '2022:04:17 15:13:50', 'SubsecTime': '00'},
+            '',
+            datetime.datetime(2022, 4, 17, 15, 13, 50),
+        ),
+        (
+            {
+                'DateTimeOriginal': '2022:07:09 11:39:04',
+                'OffsetTimeOriginal': '+05:00',
+                'SubsecTimeOriginal': '005',
+            },
+            'Original',
+            datetime.datetime(2022, 7, 9, 11, 39, 4, 5000, tzinfo=datetime.timezone(datetime.timedelta(seconds=18000)))
+        ),
+        (
+            {'DateTimeDigitized': '2019:09:22 24:40:46'},
+            'Digitized',
+            datetime.datetime(2019, 9, 23, 0, 40, 46)
+        ),
+        (
+            {'DateTimeDigitized': '2019:09:22 14:40:46', 'SubsecTimeDigitized': '919503\x00'},
+            'Digitized',
+            datetime.datetime(2019, 9, 22, 14, 40, 46, 919503)
+        ),
+    ]:
+        result = get_dt_from_exif(exif, suffix=suffix)
+        assert result == dt, f'Error:\ngot:\t\t{result!r}\nexpected:\t{dt!r}'
 
 
 test_get_dt_from_exif()
@@ -232,58 +270,62 @@ class PhotoFile(object):
 
         return None
 
+
     @cached_property
     def datetime(self) -> Optional[datetime.datetime]:
-        filename_ts = parse_timestamp(self.Basename)
-        if filename_ts:
-            filename_dt = datetime.datetime.utcfromtimestamp(filename_ts)
-            local_timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
-            filename_dt =  filename_dt.replace(tzinfo=local_timezone)
-        else:
-            filename_dt = None
-            log.debug(f'Name {self.Basename!r} has no date')
-
-        if self.Exif:
-            datetime_exif = {}
-            for key, value in sorted(self.Exif.items()):
-                lowerKey = key.lower()
-                if 'date' in lowerKey or 'time' in lowerKey:
-                    datetime_exif[key] = value
-                    if key not in {
-                        'DateTime', 'OffsetTime', 'SubsecTime',
-                        'DateTimeDigitized', 'OffsetTimeDigitized', 'SubsecTimeDigitized',
-                        'DateTimeOriginal', 'OffsetTimeOriginal', 'SubsecTimeOriginal',
-                        'ExposureTime', 'CompositeImageExposureTimes',
-                    }:
-                        raise RuntimeError(f'Unknown datetime key: {key!r}, value {value!r} in {self.Path}')
-            if datetime_exif:
-                log.debug(f'datetime_exif: {datetime_exif}')
+        try:
+            filename_ts = parse_timestamp(self.Basename)
+            if filename_ts:
+                filename_dt = datetime.datetime.utcfromtimestamp(filename_ts)
+                local_timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+                filename_dt =  filename_dt.replace(tzinfo=local_timezone)
             else:
-                log.debug(f'No date in exif for {self.Path}: {self.Exif}')
+                filename_dt = None
+                log.debug(f'Name {self.Basename!r} has no date')
 
-            original_dt = get_dt_from_exif(self.Exif, 'Original')
-            if original_dt:
-                return original_dt
+            if self.Exif:
+                datetime_exif = {}
+                for key, value in sorted(self.Exif.items()):
+                    lowerKey = key.lower()
+                    if 'date' in lowerKey or 'time' in lowerKey:
+                        datetime_exif[key] = value
+                        if key not in {
+                            'DateTime', 'OffsetTime', 'SubsecTime',
+                            'DateTimeDigitized', 'OffsetTimeDigitized', 'SubsecTimeDigitized',
+                            'DateTimeOriginal', 'OffsetTimeOriginal', 'SubsecTimeOriginal',
+                            'ExposureTime', 'CompositeImageExposureTimes',
+                        }:
+                            raise RuntimeError(f'Unknown datetime key: {key!r}, value {value!r} in {self.Path}')
+                if datetime_exif:
+                    log.debug(f'datetime_exif: {datetime_exif}')
+                else:
+                    log.debug(f'No date in exif for {self.Path}: {self.Exif}')
 
-            digitized_dt = get_dt_from_exif(self.Exif, 'Digitized')
-            if digitized_dt:
-                return digitized_dt
+                original_dt = get_dt_from_exif(self.Exif, 'Original')
+                if original_dt:
+                    return original_dt
+
+                digitized_dt = get_dt_from_exif(self.Exif, 'Digitized')
+                if digitized_dt:
+                    return digitized_dt
+
+                if filename_dt:
+                    return filename_dt
+
+                modification_dt = get_dt_from_exif(self.Exif, '')
+                if modification_dt:
+                    log.warn(f'Using default dt for {self.Path}: {datetime_exif}')
+                    return modification_dt
+
+            else:
+                log.warn(f'No EXIF in {self.Path}')
 
             if filename_dt:
-                log.warn(f'Using filename dt for {self.Path}: {datetime_exif}')
+                log.warn(f'Using filename dt for {self.Path}')
                 return filename_dt
-
-            modification_dt = get_dt_from_exif(self.Exif, '')
-            if modification_dt:
-                log.warn(f'Using default dt for {self.Path}: {datetime_exif}')
-                return modification_dt
-
-        else:
-            log.warn(f'No EXIF in {self.Path}')
-
-        if filename_dt:
-            log.warn(f'Using filename dt for {self.Path}')
-            return filename_dt
+        except:
+            log.error(f'Failed to get datetime on {self.Path!r}')
+            raise
 
         return None
             
