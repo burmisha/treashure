@@ -18,19 +18,6 @@ log = logging.getLogger(__name__)
 PIL.Image.MAX_IMAGE_PIXELS = 200 * 1024 * 1024
 
 
-def timestampFromStr(dateStr: str, fmt: str) -> int:
-    formatter = lambda s: s.replace(':', '-').replace('.', '-')
-    tmpStr = formatter(dateStr)
-    tmpFmt = formatter(fmt)
-    timestamp = int(datetime.datetime.strptime(tmpStr, tmpFmt).timestamp())
-    if 1100000000 < timestamp < 1700000000:
-        pass
-    elif timestamp < 100000000:
-        log.warn(f'Timestamp {timestamp} is too old, skippping')
-        return None
-    else:
-        raise RuntimeError(f'Invalid timestamp {timestamp} from {dateStr!r}')
-    return timestamp
 
 
 @attr.s
@@ -61,9 +48,15 @@ TIMESTAMP_RE = (
     r'\d{2}'
     r'([-_\.:])?'
     r'\d{2}'
-    r')[-_\.~ ]'
+    r')'
 )
-TS_PREFIXES = [prefix + TIMESTAMP_RE for prefix in [r'^', r'[a-zA-Z-_]']]
+
+TS_PREFIXES = [
+    fr'^{TIMESTAMP_RE}[-_\.~ ]',
+    fr'[a-zA-Z-_]{TIMESTAMP_RE}[-_\.~ ]',
+    fr'^{TIMESTAMP_RE}\b',
+    fr'[a-zA-Z-_]{TIMESTAMP_RE}\b',
+]
 
 
 def parse_timestamp(basename: str) -> int:
@@ -71,7 +64,14 @@ def parse_timestamp(basename: str) -> int:
         res = re.search(ts_re, basename)
         if res:
             res = ''.join([l for l in res.group(1) if l.isdigit()])
-            return timestampFromStr(res, '%Y%m%d%H%M%S')
+            timestamp = int(datetime.datetime.strptime(res, '%Y%m%d%H%M%S').timestamp())
+            if 1100000000 < timestamp < 2000000000:
+                return timestamp
+            elif timestamp < 100000000:
+                log.warn(f'Timestamp {timestamp} is too old, skippping')
+                return None
+            else:
+                raise RuntimeError(f'Invalid timestamp {timestamp} from {basename!r}')
 
     if len([i for i in basename if i.isdigit()]) >= 14:
         log.info(f'No dt in {basename}')
@@ -101,6 +101,10 @@ def test_parse_timestamp():
         ('2007_04_26-16_37_11.jpg', 1177587431),
         ('P-00930-2007_04_26-16_37_11.jpg', 1177587431),
         ('IMG_20191028_081550_384.jpg', 1572236150),
+        ('IMG_20191028_081550_384', 1572236150),
+        ('20191028081550', 1572236150),
+        ('2005-01-01 10:10:10', 1104559810),
+        ('2033-01-01 10:10:10', 1988172610),
     ]:
         parsed = parse_timestamp(basename)
         assert parsed == expected, f'Broken parse for {basename}:\n    parsed:\t\t{parsed}\n    expected:\t{expected}'
