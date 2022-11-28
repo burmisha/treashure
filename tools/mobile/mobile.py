@@ -235,7 +235,7 @@ class PhotoFile(object):
 
     @cached_property
     def extension(self):
-        return self.Basename.split('.')[-1],
+        return self.Basename.split('.')[-1]
 
     @cached_property
     def Exif(self):
