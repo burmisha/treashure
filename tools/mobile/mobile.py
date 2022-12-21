@@ -19,7 +19,6 @@ PIL.Image.MAX_IMAGE_PIXELS = 200 * 1024 * 1024
 
 
 
-
 @attr.s
 class PhotoInfo:
     path: str = attr.ib()
@@ -73,7 +72,7 @@ def parse_timestamp(basename: str) -> int:
             else:
                 raise RuntimeError(f'Invalid timestamp {timestamp} from {basename!r}')
 
-    if len([i for i in basename if i.isdigit()]) >= 14:
+    if re.match(r'.*\d{4}.?\d{2}.?\d{2}.*\d{2}.?\d{2}.?\d{2}.*', basename):
         log.info(f'No dt in {basename}')
 
     return None
@@ -114,14 +113,13 @@ test_parse_timestamp()
 
 
 def get_timedelta(offset: str) -> datetime.timedelta:
-    td = {
-        '+01:00': datetime.timedelta(seconds=3600 * 1),
-        '+02:00': datetime.timedelta(seconds=3600 * 2),
-        '+03:00': datetime.timedelta(seconds=3600 * 3),
-        '+04:00': datetime.timedelta(seconds=3600 * 4),
-        '+05:00': datetime.timedelta(seconds=3600 * 5),
-    }[offset]
-    return td
+    res = re.search(r'^\+(\d\d):00$', offset)
+    if res:
+        hours = int(res.group(1))
+        assert 1 <= hours <= 11
+        return datetime.timedelta(seconds=3600 * hours)
+    else:
+        raise ValueError(f'Invalid offset: {offset!r}')
 
 
 def cut_large_hour(dt_str: str) -> Tuple[str, int]:

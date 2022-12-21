@@ -37,7 +37,12 @@ if __name__ == '__main__':
     parser = create_arguments_parser()
     args = parser.parse_args()
 
-    logFormat='%(asctime)s  %(levelname)-8s %(message)s'
+    logFormat=' '.join([
+        '%(asctime)s.%(msecs)03d',
+        '%(name)20s:%(lineno)-4d',
+        '%(levelname)-7s',
+        ' %(message)s',
+    ])
     logLevel = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(level=logLevel, format=logFormat, datefmt='%H:%M:%S')
 

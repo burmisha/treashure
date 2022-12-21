@@ -2,9 +2,9 @@ import library
 import tools
 import logging
 import collections
-log = logging.getLogger(__file__)
 import os
 
+log = logging.getLogger(__name__)
 
 NAME_FORMAT = '{dt:%Y-%m-%d %H-%M-%S}{suffix}.{extension}'
 
@@ -68,7 +68,7 @@ def rename_dir(
             photos_by_ts[photo.timestamp].append(photo)
             ok_count += 1
         else:
-            log.warn(f'Skipping {photo.Path}')
+            log.warn(f'No ts in file, skip: {photo.Path}')
 
     mover = FileMover()
     for timestamp, photos in sorted(photos_by_ts.items()):
