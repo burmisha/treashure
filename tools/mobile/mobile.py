@@ -57,13 +57,17 @@ TS_PREFIXES = [
     fr'[a-zA-Z-_]{TIMESTAMP_RE}\b',
 ]
 
+import pytz
 
 def parse_timestamp(basename: str) -> int:
     for ts_re in TS_PREFIXES:
         res = re.search(ts_re, basename)
         if res:
             res = ''.join([l for l in res.group(1) if l.isdigit()])
-            timestamp = int(datetime.datetime.strptime(res, '%Y%m%d%H%M%S').timestamp())
+            dt = datetime.datetime.strptime(res, '%Y%m%d%H%M%S')
+            moscow_tz = pytz.timezone('Europe/Moscow')
+            dt = moscow_tz.localize(dt).replace(tzinfo=None)
+            timestamp = int(dt.timestamp())
             if 1100000000 < timestamp < 2000000000:
                 return timestamp
             elif timestamp < 100000000:
@@ -80,10 +84,13 @@ def parse_timestamp(basename: str) -> int:
 
 # TODO: check timezones
 def test_parse_timestamp():
-    for basename, expected in [
+    for line, expected in [
+        ('2022-12-29 22:14:05', 1672337645),  # ARM
+        ('2005-01-01 10:10:10', 1104559810),
+        ('2033-01-01 10:10:10', 1988172610),
         ('Screenshot_20191231-190906.png', 1577804946),
-        ('Screenshot_20191231-190906~2.png', 1577804946),
-        ('PHOTO_20191231_190906_0.jpg', 1577804946),
+        ('Screenshot_20191231-190907~2.png', 1577804947),
+        ('PHOTO_20191231_190908_0.jpg', 1577804948),
         ('2021-11-06 16:18:21.jpg', 1636201101),
         ('2020-04-24 03.00.49 3.jpg', 1587682849),
         ('1305-burmisha-20130524232554.png', 1369423554),
@@ -102,11 +109,13 @@ def test_parse_timestamp():
         ('IMG_20191028_081550_384.jpg', 1572236150),
         ('IMG_20191028_081550_384', 1572236150),
         ('20191028081550', 1572236150),
-        ('2005-01-01 10:10:10', 1104559810),
-        ('2033-01-01 10:10:10', 1988172610),
     ]:
-        parsed = parse_timestamp(basename)
-        assert parsed == expected, f'Broken parse for {basename}:\n    parsed:\t\t{parsed}\n    expected:\t{expected}'
+        timestamp = parse_timestamp(line)
+        assert timestamp == expected, '\n'.join([
+            f'Broken parse for {line!r}:',
+            f'    got:\t{timestamp}',
+            f'    expected:\t{expected}',
+        ])
 
 
 test_parse_timestamp()
@@ -236,7 +245,7 @@ class PhotoFile(object):
         return self.Basename.split('.')[-1]
 
     @cached_property
-    def Exif(self):
+    def Exif(self) -> dict:
         with PIL.Image.open(self.Path) as image:
             if image.format != 'PNG':
                 rawExif = image._getexif()
