@@ -4,67 +4,58 @@ import gpxpy.gpx
 import logging
 log = logging.getLogger(__name__)
 
+NAMESPACE = 'gpxtpx'
 
-class GpxWriter(object):
-    def __init__(self, filename: str):
-        self.__Points = []
-        self.__filename = filename
-        assert self.__filename.endswith('.gpx')
 
-    def AddPoints(self, points):
-        for point in points:
-            gpxTrackPoint = gpxpy.gpx.GPXTrackPoint(
-                latitude=point.latitude,
-                longitude=point.longitude,
-                elevation=point.altitude,
-                time=point.datetime,
-            )
-            count = 0
-            namespace = '{gpxtpx}'
-            extensionElement = ElementTree.Element(namespace + 'TrackPointExtension')
-            for suffix, value in [
-                ('hr', point.heart_rate),
-                ('cad', point.cadence),
-            ]:
-                if value:
-                    count += 1
-                    subElement = ElementTree.Element(namespace + suffix)
-                    subElement.text = str(value)
-                    extensionElement.insert(count, subElement)
-            if count:
-                gpxTrackPoint.extensions.append(extensionElement)
-            self.__Points.append(gpxTrackPoint)
+def _to_track_point(point) -> gpxpy.gpx.GPXTrackPoint:
+    gpxTrackPoint = gpxpy.gpx.GPXTrackPoint(
+        latitude=point.latitude,
+        longitude=point.longitude,
+        elevation=point.altitude,
+        time=point.datetime,
+    )
 
-    def HasPoints(self):
-        return len(self.__Points) > 0
+    point_extension = ElementTree.Element(f'{{{NAMESPACE}}}TrackPointExtension')
 
-    def ToXml(self):
-        if not self.__Points:
-            raise RuntimeError('No points')
+    count = 0
+    for element_name, value in [
+        (f'{{{NAMESPACE}}}hr', point.heart_rate),
+        (f'{{{NAMESPACE}}}cad', point.cadence),
+    ]:
+        if value:
+            count += 1
+            element = ElementTree.Element(element_name)
+            element.text = str(value)
+            point_extension.insert(count, element)
 
-        log.debug('Create GPX')
-        gpx = gpxpy.gpx.GPX()
-        gpx.nsmap = {
-            'gpxtpx': 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1',
-        }
+    if count:
+        gpxTrackPoint.extensions.append(point_extension)
 
-        log.debug('Create first track in GPX')
-        gpx_track = gpxpy.gpx.GPXTrack()
-        gpx.tracks.append(gpx_track)
+    return gpxTrackPoint
 
-        log.debug('Create first segment in GPX track')
-        gpx_segment = gpxpy.gpx.GPXTrackSegment()
-        gpx_track.segments.append(gpx_segment)
 
-        log.debug('Add points to segment in GPX track')
-        self.__Points.sort(key=lambda point: point.time)
-        gpx_segment.points.extend(self.__Points)
+def save_gpx(gpx: list, filename: str):
+    log.info(f'Save GPX: {filename!r} with {len(gpx.tracks[0].segments[0].points)} points')
+    assert filename.endswith('.gpx')
+    assert gpx.tracks[0].segments[0].points
+    with open(filename, 'w') as f:
+        f.write(gpx.to_xml())
 
-        return gpx.to_xml()
 
-    def Save(self):
-        assert self.__Points
-        log.info(f'Writing {len(self.__Points)} points to {self.__filename}')
-        with open(self.__filename, 'w') as f:
-            f.write(self.ToXml())
+def to_gpx(points: list) -> gpxpy.gpx.GPX:
+    track_points = [_to_track_point(point) for point in points]
+    track_points.sort(key=lambda track_point: track_point.time)
 
+    gpx_segment = gpxpy.gpx.GPXTrackSegment()
+    gpx_segment.points.extend(track_points)
+
+    gpx_track = gpxpy.gpx.GPXTrack()
+    gpx_track.segments.append(gpx_segment)
+
+    gpx_file = gpxpy.gpx.GPX()
+    gpx_file.nsmap = {
+        NAMESPACE: 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1',
+    }
+    gpx_file.tracks.append(gpx_track)
+
+    return gpx_file

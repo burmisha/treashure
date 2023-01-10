@@ -1,5 +1,5 @@
 from tools.fitreader import read_fit_file
-from tools.gpxwriter import GpxWriter
+from tools.gpxwriter import save_gpx, to_gpx
 from tools import model
 
 import library
@@ -156,10 +156,8 @@ def analyze(args):
         #         parts[-2] = parts[-2] + '_' + suffix
         #         parts[-1] = 'gpx'
         #         filename = '.'.join(parts)
-        #         gpx_writer = GpxWriter(filename)
-        #         gpx_writer.AddPoints(points)
-        #         if gpx_writer.HasPoints():
-        #             gpx_writer.Save()
+        #         if points:
+        #             save_gpx(to_gpx(points), filename)
         #         else:
         #             log.info(f'No points to save: {filename}')
 

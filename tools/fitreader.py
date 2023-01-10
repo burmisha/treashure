@@ -80,14 +80,19 @@ def get_activity_timezone(fit_file: fitparse.FitFile) -> Optional[datetime.timez
     timestamp = activity_values['timestamp']
     local_timestamp = activity_values.get('local_timestamp')
     if local_timestamp is not None:
-
         timedelta = local_timestamp - timestamp
         if timedelta not in [
+            datetime.timedelta(seconds=0),
+            datetime.timedelta(seconds=3600),
             datetime.timedelta(seconds=7200),
             datetime.timedelta(seconds=10800),
             datetime.timedelta(seconds=14400),
         ]:
-            raise InvalidTimezone(f'Invalid timezone: {timedelta}')
+            log.warn(f'Strange timezone: {timedelta} in {fit_file}')
+            # print(dir(fit_file))
+            # for msg in fit_file.get_messages():
+            #     print(msg, dir())
+            # raise InvalidTimezone(f'Invalid timezone: {timedelta}')
 
         return datetime.timezone(timedelta)
     else:
