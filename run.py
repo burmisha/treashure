@@ -10,9 +10,9 @@ log = logging.getLogger('treashure')
 
 
 COMMANDS = [
-    ('import', 'Import tracks from device', tools.import_tracks.populate_parser),
-    ('join', 'Join old tracks into one', tools.join_tracks.populate_parser),
-    ('analyze', 'Analyze files', tools.speed.populate_parser),
+    ('track-import', 'Import tracks from device', tools.import_tracks.populate_parser),
+    ('track-join', 'Join old tracks into one', tools.join_tracks.populate_parser),
+    ('track-analyze', 'Analyze track files', tools.running.speed.populate_parser),
     ('photo-parse', 'Parse mobile photos', tools.mobile.analyze.populate_parser),
     ('photo-analyze', 'Analyze mobile photos', tools.mobile.mobile.populate_parser),
     ('photo-calc', 'Run calc', tools.photo.compare.populate_calc_parser),

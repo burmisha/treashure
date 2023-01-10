@@ -32,7 +32,7 @@ def populate_parser(parser):
 
 
 @attr.s
-class SrcFitFile:
+class SrcFile:
     filename: str = attr.ib()
 
     @cached_property
@@ -44,14 +44,14 @@ class SrcFitFile:
         return os.path.getmtime(self.filename)
 
 
-def get_fit_files(dirname) -> List[SrcFitFile]:
+def get_fit_files(dirname) -> List[SrcFile]:
     return [
-        SrcFitFile(filename)
+        SrcFile(filename)
         for filename in library.files.walk(dirname, extensions=['.FIT', '.fit'])
     ]
 
 
-def wait_fit_files(dirname: str, sleep_time: int) -> List[SrcFitFile]:
+def wait_fit_files(dirname: str, sleep_time: int) -> List[SrcFile]:
     files = []
     while not files:
         files = get_fit_files(dirname)

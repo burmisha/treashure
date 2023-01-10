@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 SEGMENT_DURATION_THRESHOLD = 10000
 
+
 @attr.s
 class GeoPoint:
     longitude: Optional[float] = attr.ib(default=None)
@@ -126,7 +127,6 @@ class Track:
     @property
     def start_ts(self) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(self.start_timestamp)
-
 
     @cached_property
     def ok_points(self) -> List[GeoPoint]:
@@ -254,7 +254,8 @@ class Track:
 
     def __str__(self):
         ok_count = len(self.points)
-        msg = f'track {self.filename} {self.status}: {self.ok_count} points'
+        basename = os.path.basename(self.filename)
+        msg = f'track {basename} {self.status}: {self.ok_count} points'
         if self.failures_count:
             msg += f' and {self.failures_count} failures'
         return msg

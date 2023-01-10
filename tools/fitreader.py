@@ -14,10 +14,6 @@ RECORD_MESSAGE = 'record'
 ACTIVITY_MESSAGE = 'activity'
 
 
-class InvalidTimezone(Exception):
-    pass
-
-
 def __from_semicircles(value: float) -> float:
     # https://forums.garmin.com/forum/developers/garmin-developer-information/60220-
     return float(value) * 180 / (2 ** 31)
@@ -73,8 +69,7 @@ def get_point(values: dict) -> GeoPoint:
     )
 
 
-def get_activity_timezone(fit_file: fitparse.FitFile) -> Optional[datetime.timezone]:
-    activity_messages = list(fit_file.get_messages(ACTIVITY_MESSAGE))
+def get_activity_timezone(activity_messages: list) -> Optional[datetime.timezone]:
     assert len(activity_messages) == 1
     activity_values = activity_messages[0].get_values()
     timestamp = activity_values['timestamp']
@@ -92,7 +87,7 @@ def get_activity_timezone(fit_file: fitparse.FitFile) -> Optional[datetime.timez
             # print(dir(fit_file))
             # for msg in fit_file.get_messages():
             #     print(msg, dir())
-            # raise InvalidTimezone(f'Invalid timezone: {timedelta}')
+            # raise ValueError(f'Invalid timezone: {timedelta}')
 
         return datetime.timezone(timedelta)
     else:
@@ -107,7 +102,9 @@ def read_fit_file(filename, raise_on_error=True) -> Track:
         fit_file = fitparse.FitFile(filename, check_crc=False)
         crc_ok = False
 
-    activity_timezone = get_activity_timezone(fit_file)
+    activity_timezone = get_activity_timezone(
+        activity_messages=list(fit_file.get_messages(ACTIVITY_MESSAGE)),
+    )
     points = [
         get_point(message.get_values())
         for message in fit_file.get_messages(name=RECORD_MESSAGE)

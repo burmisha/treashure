@@ -16,6 +16,8 @@ from typing import List
 DEFAULT_SPEED_LIMIT = 2
 DEFAULT_DISTANCE_LIMIT = 5
 
+ACTIVE_YEARS = list(range(2013, 2024))
+
 
 def speed_rating(segment: model.Segment, average_speed: float) -> float:
     rating = segment.speed / average_speed
@@ -39,6 +41,7 @@ def clean(
     speed_limit: int=None,
     distance_limit: int=None,
 ) -> model.Track:
+    log.info(f'cleaning {track}')
     is_ok = []
     for index, point in enumerate(track.ok_points):
         point_segments = {}
@@ -81,12 +84,14 @@ def clean(
 
         is_ok.append(point_is_ok)
 
-    return model.Track(
+    new_track = model.Track(
         filename=track.filename,
         points=[point for point, point_is_ok in zip(track.ok_points, is_ok) if point_is_ok],
         correct_crc=track.correct_crc,
         activity_timezone=track.activity_timezone,
     )
+    log.info(f'cleaned {new_track}')
+    return new_track
 
 
 def analyze_track(
@@ -104,45 +109,44 @@ def analyze_track(
 
 
 def get_filenames(dirnames: List[str], flt):
-    log.info(f'Checking {dirnames}')
-    files = [
-        file
-        for d in dirnames
-        for file in library.files.walk(d, extensions=['.FIT', '.fit'])
-    ]
-    files.sort()
-    if flt:
-        for filename in files:
-            if flt in filename:
-                yield filename
-    else:
-        for filename in files:
+    log.info(f'Checking {len(dirnames)} dirs:')
+
+    files = []
+    for dirname in dirnames:
+        log.info(f'    {dirname}')
+        for file in library.files.walk(dirname, extensions=['.FIT', '.fit']):
+            files.append(file)
+
+    for filename in sorted(files):
+        if (not flt) or (flt in filename):
             yield filename
 
 
-def get_dirnames(add_travel: bool) -> List[str]:
-    dirnames = []
-    for year in range(2013, 2023):
-        dirname = os.path.join(model.SYNC_LOCAL_DIR, str(year))
-        dirnames.append(dirname)
+def get_dirnames(
+    years: List[int],
+    add_travel: bool,
+):
+    for year in years:
+        yield os.path.join(model.SYNC_LOCAL_DIR, str(year))
 
     if add_travel:
-        dirnames.append(model.DEFAULT_TRACKS_LOCATION)
-
-    return dirnames
+        yield model.DEFAULT_TRACKS_LOCATION
 
 
 def analyze(args):
-    dirnames = get_dirnames(args.add_travel)
-    filenames = get_filenames(dirnames, args.filter)
+    dirnames = list(get_dirnames(ACTIVE_YEARS, args.add_travel))
+    filenames = list(get_filenames(dirnames, args.filter))
 
+    log.info(f'Analyzing {len(filenames)} files')
     for filename in filenames:
+        log.info(f'Analyzing {filename}')
         track = read_fit_file(filename, raise_on_error=False)
         if not track.is_valid:
             log.error(f'Skipping {track}')
             continue
 
         log.info(track)
+
         clean_track = analyze_track(track)
         log.info(clean_track.explain)
 
