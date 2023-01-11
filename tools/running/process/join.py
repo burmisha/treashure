@@ -3,7 +3,7 @@ from typing import List
 
 from tools.running.fitreader import read_fit_file
 from tools.running.gpxwriter import save_gpx, to_gpx
-from tools.model import DEFAULT_TRACKS_LOCATION
+from tools.running import dirname
 import library
 
 import logging
@@ -73,7 +73,7 @@ def run(args):
 
 
 def populate_parser(parser):
-    parser.add_argument('--location', help='Location to join tracks', default=DEFAULT_TRACKS_LOCATION)
+    parser.add_argument('--location', help='Location to join tracks', default=dirname.TRACKS_DIR)
     parser.add_argument('--save', help='Do save', action='store_true')
     parser.add_argument('--overwrite', help='Overwrite existing files', action='store_true')
     parser.set_defaults(func=run)

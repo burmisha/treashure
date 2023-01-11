@@ -9,6 +9,7 @@ from typing import Dict, List
 
 import attr
 import tools
+from tools.running import dirname
 
 import logging
 log = logging.getLogger(__name__)
@@ -20,8 +21,8 @@ DEFAULT_BROWSER = 'Firefox'
 
 
 def populate_parser(parser):
-    parser.add_argument('--tracks', help='Result tracks dirname', default=tools.model.SYNC_LOCAL_DIR)
-    parser.add_argument('--garmin', help='Garmin dirname', default=tools.model.GARMIN_DEVICE_DIR)
+    parser.add_argument('--tracks', help='Result tracks dirname', default=dirname.SYNC_LOCAL_DIR)
+    parser.add_argument('--garmin', help='Garmin dirname', default=dirname.GARMIN_DEVICE_DIR)
     parser.add_argument('-o', '--open', help='Open webbrowser and dir', action='store_true')
     parser.add_argument('-c', '--copy', help='Copy files in auto mode', action='store_true')
     parser.add_argument('-d', '--delete', help='Delete copied files', action='store_true')

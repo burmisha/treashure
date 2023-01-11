@@ -1,7 +1,7 @@
 from tools.running.fitreader import read_fit_file
 from tools.running.gpxwriter import save_gpx, to_gpx
 from tools.running.segment import Segment
-from tools import model
+from tools.running import dirname
 from tools.running.track import Track
 
 import library
@@ -132,7 +132,7 @@ def get_dirnames(
         yield os.path.join(model.SYNC_LOCAL_DIR, str(year))
 
     if add_travel:
-        yield model.DEFAULT_TRACKS_LOCATION
+        yield dirname.TRACKS_DIR
 
 
 def analyze(args):
