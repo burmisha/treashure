@@ -1,8 +1,8 @@
 import os
 from typing import List
 
-from tools.fitreader import read_fit_file
-from tools.gpxwriter import save_gpx, to_gpx
+from tools.running.fitreader import read_fit_file
+from tools.running.gpxwriter import save_gpx, to_gpx
 from tools.model import DEFAULT_TRACKS_LOCATION
 import library
 

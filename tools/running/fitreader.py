@@ -4,7 +4,8 @@ import datetime
 import os
 
 from typing import Tuple, List, Optional
-from tools.model import GeoPoint, Track
+from tools.running.track import Track
+from tools.running import trackpoint
 
 import logging
 log = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def __from_semicircles(value: float) -> float:
     return float(value) * 180 / (2 ** 31)
 
 
-def get_point(values: dict) -> GeoPoint:
+def get_point(values: dict) -> trackpoint.TrackPoint:
     timestamp = int((values['timestamp'] - datetime.datetime(1970, 1, 1)).total_seconds())
     assert 1000000000 < timestamp < 2000000000
 
@@ -57,7 +58,7 @@ def get_point(values: dict) -> GeoPoint:
     if heart_rate is not None:
         heart_rate = int(heart_rate)
 
-    return GeoPoint(
+    return trackpoint.TrackPoint(
         longitude=longitude,
         latitude=latitude,
         altitude=altitude,
@@ -83,7 +84,7 @@ def get_activity_timezone(activity_messages: list) -> Optional[datetime.timezone
             datetime.timedelta(seconds=10800),
             datetime.timedelta(seconds=14400),
         ]:
-            log.warn(f'Strange timezone: {timedelta} in {fit_file}')
+            log.warn(f'Strange timezone: {timedelta}')
             # print(dir(fit_file))
             # for msg in fit_file.get_messages():
             #     print(msg, dir())

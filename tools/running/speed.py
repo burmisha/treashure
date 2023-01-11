@@ -1,6 +1,8 @@
-from tools.fitreader import read_fit_file
-from tools.gpxwriter import save_gpx, to_gpx
+from tools.running.fitreader import read_fit_file
+from tools.running.gpxwriter import save_gpx, to_gpx
+from tools.running.segment import Segment
 from tools import model
+from tools.running.track import Track
 
 import library
 
@@ -19,14 +21,14 @@ DEFAULT_DISTANCE_LIMIT = 5
 ACTIVE_YEARS = list(range(2013, 2024))
 
 
-def speed_rating(segment: model.Segment, average_speed: float) -> float:
+def speed_rating(segment: Segment, average_speed: float) -> float:
     rating = segment.speed / average_speed
     rating /= math.log(segment.duration + 2)
     return rating
 
 
-def distance_rating(first: model.Segment, second: model.Segment) -> float:
-    joined = model.Segment(start=first.start, finish=second.finish)
+def distance_rating(first: Segment, second: Segment) -> float:
+    joined = Segment(start=first.start, finish=second.finish)
     if first.distance or second.distance:
         return (first.distance + second.distance - joined.distance) / (first.distance + second.distance)
     else:
@@ -37,10 +39,10 @@ SHIFTS = [-3, -2, -1, 0, 1, 2, 3]
 
 
 def clean(
-    track: model.Track,
+    track: Track,
     speed_limit: int=None,
     distance_limit: int=None,
-) -> model.Track:
+) -> Track:
     log.info(f'cleaning {track}')
     is_ok = []
     for index, point in enumerate(track.ok_points):
@@ -49,7 +51,7 @@ def clean(
             start_index = index + shift
             finish_index = start_index + 1
             if 0 <= start_index and finish_index < len(track.ok_points):
-                segment = model.Segment(track.ok_points[start_index], track.ok_points[finish_index])
+                segment = Segment(track.ok_points[start_index], track.ok_points[finish_index])
                 point_segments[shift] = segment
 
         if not point_segments:
@@ -84,7 +86,7 @@ def clean(
 
         is_ok.append(point_is_ok)
 
-    new_track = model.Track(
+    new_track = Track(
         filename=track.filename,
         points=[point for point, point_is_ok in zip(track.ok_points, is_ok) if point_is_ok],
         correct_crc=track.correct_crc,
@@ -95,10 +97,10 @@ def clean(
 
 
 def analyze_track(
-    track: model.Track,
+    track: Track,
     speed_limit: int = DEFAULT_SPEED_LIMIT,
     distance_limit: int = DEFAULT_DISTANCE_LIMIT,
-) -> model.Track:
+) -> Track:
     new_track = None
     old_track = track
     while (new_track is None) or (new_track.ok_count < old_track.ok_count):
