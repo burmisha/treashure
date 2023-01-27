@@ -59,7 +59,7 @@ def rename_dir(
     move: bool=False,
 ):
     photo_files = [
-        tools.mobile.mobile.PhotoFile(file)
+        tools.photo.mobile.PhotoFile(file)
         for file in library.files.walk(dir_name, extensions=['JPG', 'jpg'])
         if file_is_ok(file)
     ]
