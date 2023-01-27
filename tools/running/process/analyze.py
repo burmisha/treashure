@@ -4,110 +4,98 @@ from tools.running.segment import Segment
 from tools.running import dirname
 from tools.running.track import Track
 
-import library
+import library.files
 
 import datetime
 import math
 import os
+import attr
 
 import logging
 log = logging.getLogger(__name__)
 
-from typing import List
-
-DEFAULT_SPEED_LIMIT = 2
-DEFAULT_DISTANCE_LIMIT = 5
-
-ACTIVE_YEARS = list(range(2013, 2024))
+from typing import List, Tuple
 
 
-def speed_rating(segment: Segment, average_speed: float) -> float:
-    rating = segment.speed / average_speed
-    rating /= math.log(segment.duration + 2)
-    return rating
+@attr.s
+class Limits:
+    triangle: float = attr.ib()
+    speed: int = attr.ib()
+    distance: int = attr.ib()
 
 
-def distance_rating(first: Segment, second: Segment) -> float:
-    joined = Segment(start=first.start, finish=second.finish)
-    if first.distance or second.distance:
-        return (first.distance + second.distance - joined.distance) / (first.distance + second.distance)
-    else:
-        return 0
+DefaultLimits = Limits(speed=20, distance=0.1, triangle=0.9)
+MinLimits = Limits(speed=1, distance=0., triangle=0.)
+MaxLimits = Limits(speed=20, distance=1., triangle=1.)
+Steps = Limits(speed=1, distance=0.05, triangle=0.02)
 
 
-SHIFTS = [-3, -2, -1, 0, 1, 2, 3]
+ACTIVE_YEARS = list(range(2013, datetime.datetime.now().year + 1))
 
 
 def clean(
     track: Track,
-    speed_limit: int=None,
-    distance_limit: int=None,
-) -> Track:
-    log.info(f'cleaning {track}')
+    limits: Limits,
+) -> Tuple[Track, list]:
     is_ok = []
-    for index, point in enumerate(track.ok_points):
-        point_segments = {}
-        for shift in SHIFTS:
-            start_index = index + shift
-            finish_index = start_index + 1
-            if 0 <= start_index and finish_index < len(track.ok_points):
-                segment = Segment(track.ok_points[start_index], track.ok_points[finish_index])
-                point_segments[shift] = segment
+    points = track.ok_points
 
-        if not point_segments:
-            raise RuntimeError(f'No segments for {index}: {point}')
+    assert len(points) >= 3
 
+    previous_ok_point = None
+    for index, point in enumerate(points):
         point_is_ok = True
-        segments_values = point_segments.values()
-        max_speed_rating = max(speed_rating(segment, track.average_speed) for segment in segments_values)
-        if speed_limit <= max_speed_rating:
+        next_point = points[index + 1] if index + 1 < len(points) else None
+
+        prev_segment = Segment(previous_ok_point, point) if (previous_ok_point and point) else None
+        next_segment = Segment(point, next_point) if (point and next_point) else None
+        joined_segment = Segment(previous_ok_point, next_point) if (previous_ok_point and next_point) else None
+
+        if prev_segment and next_segment and joined_segment:
+            triangle_rating = 1 - (joined_segment.distance / (prev_segment.distance + next_segment.distance))
+        else:
+            triangle_rating = None
+
+        reason = None
+        if prev_segment and (prev_segment.speed >= limits.speed):
+            reason = f'speed: {prev_segment.speed} >= {limits.speed}'
+        elif triangle_rating and (triangle_rating >= limits.triangle):
+            reason = f'triangle: {triangle_rating} >= {limits.triangle}'
+        elif prev_segment and next_segment and (prev_segment.distance >= limits.distance) and (next_segment.distance >= limits.distance):
+            reason = f'two distances: {prev_segment.distance}, {next_segment.distance} >= {limits.distance}'
+
+        if reason:
+            log.info(f'{index}@{point.timestamp} is broken by {reason}')
             point_is_ok = False
-
-        if point_segments.get(-1) and point_segments.get(0):
-            if distance_limit <= distance_rating(point_segments[-1], point_segments[0]):
-                point_is_ok = False
-
-        log.debug(
-            'point %03d: %s',
-            index,
-            '\t'.join([
-                ' '.join(f'{segment.speed:.2f}' for segment in segments_values),
-                ' '.join(f'{segment.duration}' for segment in segments_values),
-                ' '.join(f'{segment.distance * 1000:.2f}' for segment in segments_values),
-                ' '.join(f'{speed_rating(segment, track.average_speed):.2f}' for segment in segments_values),
-                ' << deleting' if not point_is_ok else '',
-            ]),
-        )
-
-        if index <= 10 and max_speed_rating >= 10:
-            log.debug('Cut early start errors')
-            for previous_index in range(index):
-                is_ok[previous_index] = False
+        else:
+            previous_ok_point = point
 
         is_ok.append(point_is_ok)
 
+
+    ok_points = [point for point, point_is_ok in zip(points, is_ok) if point_is_ok]
+    broken_points = [point for point, point_is_ok in zip(points, is_ok) if not point_is_ok]
+
     new_track = Track(
         filename=track.filename,
-        points=[point for point, point_is_ok in zip(track.ok_points, is_ok) if point_is_ok],
+        points=ok_points,
         correct_crc=track.correct_crc,
         activity_timezone=track.activity_timezone,
     )
-    log.info(f'cleaned {new_track}')
-    return new_track
+    return new_track, broken_points
 
 
 def analyze_track(
     track: Track,
-    speed_limit: int = DEFAULT_SPEED_LIMIT,
-    distance_limit: int = DEFAULT_DISTANCE_LIMIT,
-) -> Track:
-    new_track = None
-    old_track = track
-    while (new_track is None) or (new_track.ok_count < old_track.ok_count):
-        new_track = clean(old_track, speed_limit=speed_limit, distance_limit=distance_limit)
-        old_track = new_track
-
-    return new_track
+    limits: Limits,
+) -> Tuple[Track, list]:
+    all_broken_points = []
+    while True:
+        log.info(f'Clean {track} with {limits}')
+        track, broken_points = clean(track, limits)
+        all_broken_points += broken_points
+        if not broken_points:
+            return track, all_broken_points
 
 
 def get_filenames(dirnames: List[str], flt):
@@ -129,7 +117,7 @@ def get_dirnames(
     add_travel: bool,
 ):
     for year in years:
-        yield os.path.join(model.SYNC_LOCAL_DIR, str(year))
+        yield os.path.join(dirname.SYNC_LOCAL_DIR, str(year))
 
     if add_travel:
         yield dirname.TRACKS_DIR
@@ -149,7 +137,7 @@ def analyze(args):
 
         log.info(track)
 
-        clean_track = analyze_track(track)
+        clean_track, _ = analyze_track(track, DefaultLimits)
         log.info(clean_track.explain)
 
         # if args.write and (clean_track.patches_count > 0):

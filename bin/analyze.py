@@ -15,13 +15,12 @@ from typing import List
 
 from enum import Enum
 
-YEARS = list(range(2013, 2023))
-
 
 class Key(str, Enum):
     Year = 'year'
     Filename = 'filename'
-    ShowCleanTrack = 'add_clean'
+    ShowOriginalTrack = 'show_original_track'
+    ShowCleanTrack = 'show_clean_track'
     ShowPoints = 'show_points'
     PrintTimestamps = 'print_timestamps'
 
@@ -29,10 +28,14 @@ class Key(str, Enum):
 DEFAULTS = {
     Key.Year: 2019,
     Key.Filename: '2019-12-01-15-30-54_9C1E3054.FIT',
+    # Key.Year: 2018,
+    # Key.Filename: '2018-08-18-09-16-50_88I81650.FIT',
+    Key.ShowOriginalTrack: True,
     Key.ShowCleanTrack: False,
     Key.ShowPoints: False,
     Key.PrintTimestamps: False,
 }
+
 
 for key, default_value in DEFAULTS.items():
     if key not in st.session_state:
@@ -63,8 +66,8 @@ def available_names():
 with st.sidebar:
     st.selectbox(
         'Year: ',
-        YEARS,
-        YEARS.index(st.session_state[Key.Year]),
+        analyze.ACTIVE_YEARS,
+        analyze.ACTIVE_YEARS.index(st.session_state[Key.Year]),
         key=Key.Year,
     )
 
@@ -83,6 +86,7 @@ with st.sidebar:
     )
     st.button('Next track', on_click=switch_to_next_file)
 
+    st.checkbox('Add original track', key=Key.ShowOriginalTrack)
     st.checkbox('Add clean track', key=Key.ShowCleanTrack)
     st.checkbox('Show points', key=Key.ShowPoints)
     st.checkbox('Print timestamps', key=Key.PrintTimestamps)
@@ -93,8 +97,24 @@ with st.sidebar:
 
     st.write('Track file:', filename)
 
-    speed_limit = int(st.slider('speed limit', min_value=0, max_value=10, value=analyze.DEFAULT_SPEED_LIMIT))
-    distance_limit = int(st.slider('distance limit', min_value=0, max_value=10, value=analyze.DEFAULT_DISTANCE_LIMIT))
+    triangle_limit = float(st.slider('triangle limit',
+        min_value=analyze.MinLimits.triangle,
+        max_value=analyze.MaxLimits.triangle,
+        value=analyze.DefaultLimits.triangle,
+        step=analyze.Steps.triangle,
+    ))
+    speed_limit = float(st.slider('speed limit',
+        min_value=analyze.MinLimits.speed,
+        max_value=analyze.MaxLimits.speed,
+        value=analyze.DefaultLimits.speed,
+        step=analyze.Steps.speed,
+    ))
+    distance_limit = float(st.slider('distance limit',
+        min_value=analyze.MinLimits.distance,
+        max_value=analyze.MaxLimits.distance,
+        value=analyze.DefaultLimits.distance,
+        step=analyze.Steps.distance,
+    ))
 
 
 m = folium.Map(
@@ -102,13 +122,21 @@ m = folium.Map(
     zoom_start=13,
     tiles='cartodbpositron',
 )
-m.fit_bounds(track.min_max_lat_long)
+# m.fit_bounds(track.min_max_lat_long)
 
-def add_marker(point: trackpoint.TrackPoint, tooltip: str, color: str, icon: str):
+def add_marker(
+    *,
+    point: trackpoint.TrackPoint,
+    tooltip: str=None,
+    color: str=None,
+    icon: str=None,
+    popup: str=None,
+):
     marker = folium.Marker(
         point.lat_long,
         tooltip=tooltip,
         icon=folium.Icon(color=color, icon=icon),
+        popup=popup,
     )
     marker.add_to(m)
 
@@ -117,6 +145,7 @@ add_marker(point=track.finish_point, tooltip='finish', color='green', icon='stop
 
 
 def add_track(points: List[trackpoint.TrackPoint]):
+    # see folium.features.Choropleth
     for index, (start, finish) in enumerate(zip(points[:-1], points[1:])):
         color = '#11ffff' if index % 2 else '#ff11ff'
         pl = folium.vector_layers.PolyLine([start.lat_long, finish.lat_long], color=color)
@@ -124,16 +153,23 @@ def add_track(points: List[trackpoint.TrackPoint]):
 
     if st.session_state[Key.ShowPoints]:
         for point in points:
-            folium.Marker(point.lat_long, popup=point.timestamp).add_to(m)
+            add_marker(point=point, popup=point.timestamp)
 
 
-add_track(track.ok_points)
+if st.session_state[Key.ShowOriginalTrack]:
+    add_track(track.ok_points)
 
-
-# if st.session_state[Key.ShowCleanTrack]:
-#     clean_track = analyze.analyze_track(track, speed_limit=speed_limit, distance_limit=distance_limit)
-#     add_track(clean_track.ok_points)
-
+if st.session_state[Key.ShowCleanTrack]:
+    limits = analyze.Limits(
+        triangle=triangle_limit,
+        speed=speed_limit,
+        distance=distance_limit,
+    )
+    clean_track, broken_points = analyze.analyze_track(track, limits)
+    st.write('Broken points count', len(broken_points))
+    for point in broken_points:
+        add_marker(point=point, color='red', popup=point.timestamp, icon='ban-circle')
+    add_track(clean_track.ok_points)
 
 st_data = st_folium(m, width = 725)
 
