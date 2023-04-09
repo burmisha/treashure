@@ -36,7 +36,7 @@ class FileMover:
     def get_src_dst(self):
         log.info(f'Got {len(self._move_list)} files to move')
         for src, dst in self._move_list:
-            log.info(f'mv {src!r} {dst!r}')
+            log.info(f'mv {src!r} -> {dst!r}')
             yield src, dst
 
     def get_src_dirnames(self) -> Dict[str, List[str]]:
@@ -56,7 +56,7 @@ def file_is_ok(filename: str) -> bool:
 def rename_dir(
     *,
     dir_name: str,
-    move: bool=False,
+    do_move: bool,
 ):
     photo_files = [
         tools.photo.mobile.PhotoFile(file)
@@ -89,7 +89,7 @@ def rename_dir(
             mover.add(photo.Path, dst_file)
 
     for src, dst in mover.get_src_dst():
-        if move:
+        if do_move:
             os.rename(src, dst)
 
     for dirname, files in mover.get_src_dirnames().items():
@@ -99,11 +99,11 @@ def rename_dir(
 def run_rename(args):
     rename_dir(
         dir_name=args.dir,
-        move=args.move,
+        do_move=args.move,
     )
 
 
 def populate_parser(parser):
-    parser.add_argument('--dir', help='Add dir to rename', required=True)
+    parser.add_argument('--dir', help='Dir to rename', required=True)
     parser.add_argument('--move', help='Do move', action='store_true')
     parser.set_defaults(func=run_rename)
