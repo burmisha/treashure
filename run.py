@@ -19,6 +19,8 @@ COMMANDS = [
     ('photo-compare', 'Run compare', tools.photo.compare.populate_compare_parser),
     ('flickr-parse', 'Prepare photos', tools.photo.parse.populate_parser),
     ('photo-rename', 'Rename vsco photos', tools.photo.renamer.populate_parser),
+    ('airdrop-move', 'Move airdrop photos to one dir', tools.photo.airdrop.populate_parser),
+    ('sluchaem', 'Print sluchaem data', tools.sluchaem.populate_parser),
 ]
 
 
@@ -41,7 +43,7 @@ if __name__ == '__main__':
 
     logFormat=' '.join([
         '%(asctime)s.%(msecs)03d',
-        '%(name)20s:%(lineno)-4d',
+        # '%(name)20s:%(lineno)-4d',
         '%(levelname)-7s',
         ' %(message)s',
     ])

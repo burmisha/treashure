@@ -14,24 +14,35 @@ NAME_FORMAT = '{dt:%Y-%m-%d %H-%M-%S}{suffix}.{extension}'
 class FileMover:
     def __init__(self):
         self._move_list = []
-        self._src_set = set()
-        self._dst_set = set()
+        self._src_to_dst = dict()
+        self._dst_to_src = dict()
 
     def add(self, src, dst):
         if src == dst:
             log.debug(f'Same location, skip: {src!r}')
             return
 
-        if src in self._src_set:
+        if src in self._src_to_dst:
             raise RuntimeError(f'Duplicated move src: {src!r}')
-        if dst in self._dst_set:
+        if dst in self._dst_to_src:
+            log.error(
+                f'Same location, already moving to this file:'
+                f'\n\told src:\t{self._dst_to_src[dst]}'
+                f'\n\tnew src:\t{src}'
+                f'\n\tdst:\t\t{dst}'
+            )
             raise RuntimeError(f'Duplicated move dst: {dst!r}')
+
         if os.path.exists(dst):
             raise RuntimeError(f'Dst already exists: {dst!r}')
 
         self._move_list.append((src, dst))
-        self._src_set.add(src)
-        self._dst_set.add(dst)
+        self._src_to_dst[src] = dst
+        self._dst_to_src[dst] = src
+
+    @property
+    def has_dst_files(self):
+        return bool(self._move_list)
 
     def get_src_dst(self):
         log.info(f'Got {len(self._move_list)} files to move')
