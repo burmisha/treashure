@@ -1,16 +1,16 @@
 import collections
 import datetime
-import logging
 import os
 import re
 
 import library.files
+import library.mover
 
 from tools.photo.mobile import PhotoFile
-from tools.photo.renamer import FileMover
 
 from typing import Dict, List
 
+import logging
 log = logging.getLogger(__name__)
 
 
@@ -141,7 +141,7 @@ def import_airdrop(
     dirnames = get_dirnames(dirname, regexp_list)
     filenames = get_photo_files(dirnames)
 
-    file_mover = FileMover()
+    file_mover = library.mover.FileMover()
     now_str = datetime.datetime.now().strftime('%Y-%m-%dT%H-%M-%S')
 
     for src in filenames:
