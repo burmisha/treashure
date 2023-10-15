@@ -6,9 +6,10 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class Location(object):
+class Location:
     Home = os.environ['HOME']
     Dropbox = os.path.join(Home, 'Dropbox')
+    Downloads = os.path.join(Home, 'Downloads')
     YandexDisk = os.path.join(Home, 'Yandex.Disk.localized')
 
 
