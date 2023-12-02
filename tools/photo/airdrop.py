@@ -14,13 +14,15 @@ import logging
 log = logging.getLogger(__name__)
 
 
+VSCO_RE = '-'.join([f'[0-9A-F]{{{x}}}' for x in [8, 4, 4, 4, 12]])
 REGEXPS = [
     r'IMG_\d{4}( [23456])?',
     r'RPReplay_Final\d{10}( \d)?',
     r'FullSizeRender( \d+)?',
     r'camphoto_\d+( \d)?',
     r'Image',
-    '-'.join([f'[0-9A-F]{{{x}}}' for x in [8, 4, 4, 4, 12]]),
+    VSCO_RE,
+    fr'{VSCO_RE} \d{{4}}-\d{{2}}-\d{{2}} at \d{{2}}\.\d{{2}}\.\d{{2}}',  # is not vsco
 ]
 
 
@@ -125,7 +127,18 @@ def get_photo_files(photo_dirs: List[str]) -> List[str]:
 
 
 def is_vsco(filename: str) -> bool:
-    return (filename.split('.')[-1].lower() == 'jpg') and PhotoFile(src).is_vsco
+    return (filename.split('.')[-1].lower() == 'jpg') and PhotoFile(filename).is_vsco
+
+
+def get_suffix(source_filename: str) -> str:
+    if is_vsco(source_filename):
+        return 'VSCO'
+
+    dir_basename = os.path.basename(os.path.dirname(source_filename))
+    if (source_filename.split('.')[-1].lower() == 'mov') and re.match(f'^{VSCO_RE}$', dir_basename):
+        return 'VSCO - video'
+
+    return 'originals'
 
 
 def import_airdrop(
@@ -145,7 +158,7 @@ def import_airdrop(
     now_str = datetime.datetime.now().strftime('%Y-%m-%dT%H-%M-%S')
 
     for src in filenames:
-        suffix = 'VSCO' if is_vsco(src)  else 'originals'
+        suffix = get_suffix(src)
         dst = os.path.join(dirname, f'airdrop - {now_str} - {suffix}', rename(src))
         file_mover.add(src, dst)
 
@@ -155,10 +168,10 @@ def import_airdrop(
                 raise RuntimeError(f'Dir already exists: {dirname!r}')
             os.mkdir(dirname)
 
-        for src, dst in file_mover.get_mv_files():
+        for src, dst in file_mover.get_mv_files(with_log=True):
             os.rename(src, dst)
 
-        for filename in file_mover.get_rm_files():
+        for filename in file_mover.get_rm_files(with_log=True):
             os.remove(filename)
 
         if any(list(library.files.walk(dirname)) for dirname in dirnames):
@@ -168,10 +181,10 @@ def import_airdrop(
             os.rmdir(photo_dir)
 
     else:
-        for src, dst in file_mover.get_mv_files():
+        for src, dst in file_mover.get_mv_files(with_log=True):
             pass
 
-        for filename in file_mover.get_rm_files():
+        for filename in file_mover.get_rm_files(with_log=True):
             pass
 
 

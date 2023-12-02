@@ -1,16 +1,37 @@
+import enum
 import os
 import platform
 import subprocess
 
+
 import logging
 log = logging.getLogger(__name__)
+
+
+class Platform(str, enum.Enum):
+    Windows = 'win'
+    macOS = 'osx'
+
+
+def _get_platform() -> Platform:
+    system = platform.system()
+    if system == 'Windows':
+        return Platform.Windows
+    elif system == 'Darwin':
+        return Platform.macOS
+    else:
+        raise RuntimeError(f'Invalid platform system {system!r}')
+    log.info(f'Running in {mode!r} mode')
 
 
 class Location:
     Home = os.environ['HOME']
     Dropbox = os.path.join(Home, 'Dropbox')
     Downloads = os.path.join(Home, 'Downloads')
-    YandexDisk = os.path.join(Home, 'Yandex.Disk.localized')
+    YandexDisk = {
+        Platform.Windows: os.path.join('D:' + os.sep, 'YandexDisk'),
+        Platform.macOS: os.path.join(Home, 'Yandex.Disk.localized'),
+    }[_get_platform()]
 
 
 def walk(dirname, extensions=[], dirsOnly=False):
