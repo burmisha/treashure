@@ -15,6 +15,8 @@ from typing import List
 
 from enum import Enum
 
+import geojson
+
 
 class Key(str, Enum):
     Year = 'year'
@@ -121,6 +123,7 @@ m = folium.Map(
     location=[track.middle_lat, track.middle_long],
     zoom_start=13,
     tiles='cartodbpositron',
+    # tiles='OpenStreetMap',
 )
 # m.fit_bounds(track.min_max_lat_long)
 
@@ -145,15 +148,25 @@ add_marker(point=track.finish_point, tooltip='finish', color='green', icon='stop
 
 
 def add_track(points: List[trackpoint.TrackPoint]):
-    # see folium.features.Choropleth
-    for index, (start, finish) in enumerate(zip(points[:-1], points[1:])):
-        color = '#11ffff' if index % 2 else '#ff11ff'
-        pl = folium.vector_layers.PolyLine([start.lat_long, finish.lat_long], color=color)
-        pl.add_to(m)
+    # https://geopandas.org/en/stable/gallery/polygon_plotting_with_folium.html
+    # https://stackoverflow.com/questions/58032477/how-to-properly-use-key-on-in-folium-choropleths
+    # https://www.nagarajbhat.com/post/folium-visualization/
 
-    if st.session_state[Key.ShowPoints]:
-        for point in points:
-            add_marker(point=point, popup=point.timestamp)
+    # see folium.features.Choropleth
+    # for index, (start, finish) in enumerate(zip(points[:-1], points[1:])):
+    #     color = '#11ffff' if index % 2 else '#ff11ff'
+    #     pl = folium.vector_layers.PolyLine([start.lat_long, finish.lat_long], color=color)
+    #     pl.add_to(m)
+
+    gj = geojson.LineString([p.long_lat for p in points])
+    folium.features.Choropleth(
+        geo_data=gj,
+        fill_color="PuBu",
+    ).add_to(m)
+
+    # if st.session_state[Key.ShowPoints]:
+    #     for point in points:
+    #         add_marker(point=point, popup=point.timestamp)
 
 
 if st.session_state[Key.ShowOriginalTrack]:
