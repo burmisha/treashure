@@ -1,47 +1,24 @@
+import collections
+import enum
 import json
 import os
-import platform
 
-from collections import defaultdict
-from enum import Enum
 from functools import cached_property
 from typing import Dict, List
 
+import library.md5sum
+import library.files
+
 import attr
+
 import logging
 log = logging.getLogger(__file__)
 
-from library.md5sum import Md5Sum
 
-
-HOME_DIR = os.environ['HOME']
-
-
-class Platform(str, Enum):
-    Windows = 'win'
-    macOS = 'osx'
-
-
-class Mode(str, Enum):
+class Mode(str, enum.Enum):
     Old = 'old'
     New = 'new'
 
-
-def get_platform() -> Platform:
-    system = platform.system()
-    if system == 'Windows':
-        return Platform.Windows
-    elif system == 'Darwin':
-        return Platform.macOS
-    else:
-        raise RuntimeError(f'Invalid platform system {system!r}')
-    log.info(f'Running in {mode!r} mode')
-
-
-ya_disk_dir = {
-    Platform.Windows: os.path.join('D:' + os.sep, 'YandexDisk'),
-    Platform.macOS: os.path.join(HOME_DIR, 'Yandex.Disk.localized'),
-}[get_platform()]
 
 
 class Defaults(object):
@@ -75,7 +52,7 @@ class Defaults(object):
 defaults = Defaults()
 
 
-def runCalc(args):
+def run_calc(args):
     root = defaults.GetRootLocation(args.mode)
     result_file = defaults.GetJsonLocation(args.mode)
     if not os.path.isdir(root):
@@ -86,14 +63,14 @@ def runCalc(args):
     hashes = Hashes(root=root)
 
     for sub_root, _, files in os.walk(root):
-        hash_by_name = {file: Md5Sum(os.path.join(sub_root, file)) for file in files}
+        hash_by_name = {file: library.md5sum.Md5Sum(os.path.join(sub_root, file)) for file in files}
         if not hash_by_name:
             continue
         localized_root = sub_root.replace(root + os.sep, '').replace(os.sep, '/')
         log.info(f'Found {len(hash_by_name):3d} files in {localized_root!r}')
         hashes.tree[localized_root] = hash_by_name
 
-    hashes.Save(result_file)
+    hashes.save(result_file)
 
 
 @attr.s
@@ -110,7 +87,7 @@ class Hashes:
         log.info(f'Loaded hashes for {hashes.root}')
         return hashes
 
-    def Save(self, filename):
+    def save(self, filename):
         log.info(f'Saving info about {self.root} to {filename}')
         with open(filename, 'w') as f:
             json.dump(
@@ -125,7 +102,7 @@ class Hashes:
     @cached_property
     def dirs_by_hash(self):
         log.info(f'Building files index for {self.root}')
-        index = defaultdict(list)
+        index = collections.defaultdict(list)
         for dir_name, hashes in self.tree.items():
             for file_name, file_hash in hashes.items():
                 index[file_hash].append(dir_name)
@@ -175,7 +152,7 @@ def compare(*, old_hashes_file: str, new_hashes_file: str):
     old_hashes = Hashes.load(old_hashes_file)
     new_hashes = Hashes.load(new_hashes_file)
     for oldDir, oldHashes in old_hashes.clean_tree.items():
-        relevant_dirs = defaultdict(int)
+        relevant_dirs = collections.defaultdict(int)
         for fileName, fileHash in oldHashes.items():
             fileDirs = new_hashes.dirs_by_hash[fileHash]
             for d in fileDirs:
@@ -214,14 +191,14 @@ def compare(*, old_hashes_file: str, new_hashes_file: str):
             if len([c for c in baseDir if c.isdigit()]) < 8:
                 baseDir = '_'.join(oldDir.split(os.sep)[-2:])
 
-            dstDir = f'{HOME_DIR}/Toshiba_save/Photo/{baseDir}'
+            dstDir = f'{library.files.Location.Home}/Toshiba_save/Photo/{baseDir}'
             log.debug(f'''Cmd to copy them all:
 mkdir '{dstDir}'
 cp '{os.path.join(old_hashes.root, oldDir)}'/{{{",".join(missingFiles)}}} '{dstDir}/'
 ''')
 
 
-def runCompare(args):
+def run_compare(args):
     compare(
         old_hashes_file=defaults.GetJsonLocation(Mode.Old),
         new_hashes_file=defaults.GetJsonLocation(Mode.Old),
@@ -230,8 +207,8 @@ def runCompare(args):
 
 def populate_calc_parser(parser):
     parser.add_argument('--mode', help='Choose mode', choices=[mode.value for mode in Mode], required=True, type=Mode)
-    parser.set_defaults(func=runCalc)
+    parser.set_defaults(func=run_calc)
 
 
 def populate_compare_parser(parser):
-    parser.set_defaults(func=runCompare)
+    parser.set_defaults(func=run_compare)
