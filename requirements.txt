@@ -9,8 +9,6 @@ streamlit==1.14.0
 watchdog==2.1.9
 streamlit-folium==0.6.15
 flickrapi==2.4.0
-soundcloud==0.5.0
-six==1.16.0
 eyed3==0.9.7
 Flask==2.2.2
 geojson==3.0.0

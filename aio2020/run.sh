@@ -24,7 +24,7 @@ time ./aio2020 pg1m.txt out.txt
 # echo '#11' && echo -e '«a»;&**\x00aa' >in11.txt && ./aio2020 in11.txt out11.txt && cat out11.txt
 # echo '#12' && yes yes | head -2000000 >in12.txt && ./aio2020 in12.txt out12.txt && cat out12.txt
 # echo '#13' && cat /dev/random | head >in13.txt && ./aio2020 in13.txt out13.txt && cat out13.txt
-# echo '#14' && echo 'a' >'in 14.txt' && echo 'b' > 'out 14.txt' && ./aio2020 'in 14.txt' 'out 14.txt' && cat 'out 14.txt'
+# echo '#14' && echo 'a' >'in14.txt' && echo 'b' > 'out14.txt' && ./aio2020 'in14.txt' 'out14.txt' && cat 'out14.txt'
 
 # echo -e '\nCompare time (takes up to 30 seconds on MBP 2015)'
 # N=20000000
