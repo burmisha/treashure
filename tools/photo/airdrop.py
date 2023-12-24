@@ -140,6 +140,18 @@ def get_suffix(source_filename: str) -> str:
 
     return 'originals'
 
+def get_dst_dir_name(source_files: list) -> str:
+    mod_dates = set()
+    for src in source_files:
+        mod_time = os.path.getmtime(src)
+        mod_dt = datetime.datetime.utcfromtimestamp(mod_time)
+        mod_dates.add(mod_dt.strftime('%Y.%m.%d'))
+
+    result = f'{min(mod_dates)} airdrop'
+    log.info(f'Dst dirname prefix: {result!r}')
+
+    return result
+
 
 def import_airdrop(
     *,
@@ -154,12 +166,12 @@ def import_airdrop(
     dirnames = get_dirnames(dirname, regexp_list)
     filenames = get_photo_files(dirnames)
 
-    file_mover = library.mover.FileMover()
-    now_str = datetime.datetime.now().strftime('%Y-%m-%dT%H-%M-%S')
+    dst_dir_name = get_dst_dir_name(filenames)
 
+    file_mover = library.mover.FileMover()
     for src in filenames:
         suffix = get_suffix(src)
-        dst = os.path.join(dirname, f'airdrop - {now_str} - {suffix}', rename(src))
+        dst = os.path.join(dirname, f'{dst_dir_name} - {suffix}', rename(src))
         file_mover.add(src, dst)
 
     if do_move:
