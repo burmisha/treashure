@@ -1,5 +1,5 @@
 import collections
-from tools.photo.mobile import fromDict
+from library.photo.photo_file import PhotoFile
 
 import logging
 log = logging.getLogger(__name__)
@@ -8,9 +8,10 @@ log = logging.getLogger(__name__)
 def deduplicate(args):
     with open(args.json_file) as f:
         res = json.load(f)
+
     photoFiles = collections.defaultdict(list)
     for item in res:
-        photoFile = fromDict(item)
+        photoFile = PhotoFile.from_dict(item)
         photoFiles[photoFile.Md5Sum].append(photoFile)
 
     for md5sumValue, photoFilesList in photoFiles.iteritems():

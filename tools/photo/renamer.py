@@ -57,7 +57,6 @@ def rename_dir(
             dst = os.path.join(os.path.dirname(photo.Path), basename)
             file_mover.add(photo.Path, dst)
 
-
     file_mover.get_src_dirnames()
     file_mover.get_dst_dirnames()
 

@@ -10,3 +10,6 @@ analyze:
 
 hello:
 	python hello/hello.py
+
+test:
+	PYTHONPATH=. pytest tests -v

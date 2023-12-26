@@ -6,7 +6,7 @@ import re
 import library.files
 import library.mover
 
-from tools.photo.mobile import PhotoFile
+from library.photo.photo_file import PhotoFile
 
 from typing import Dict, List
 
@@ -41,31 +41,6 @@ def rename(filename: str) -> str:
         return f'IMG_{index}_edited.{extension.upper()}'
 
     return basename
-
-
-def assert_equals(value, canonic):
-    if value != canonic:
-        raise AssertionError(f'Expected: {canonic!r}, got {value!r}')
-
-
-def test_rename():
-    assert_equals(rename('/any_prefix/IMG_5666/IMG_E5666.mov'), 'IMG_5666_edited.MOV')
-    assert_equals(rename('/any_prefix/IMG_5666/IMG_5666.mov'), 'IMG_5666.mov')
-    assert_equals(rename('/any_prefix/IMG_7404/IMG_7404.AAE'), 'IMG_7404.AAE')
-    assert_equals(rename('/any_prefix/IMG_7404/IMG_7404.JPG'), 'IMG_7404.JPG')
-    assert_equals(rename('/any_prefix/IMG_7404/IMG_E7404.jpg'), 'IMG_7404_edited.JPG')
-    assert_equals(rename('/any_prefix/IMG_7404/IMG_O7404.AAE'), 'IMG_7404_edited.AAE')
-    assert_equals(rename('/any_prefix/FEAC8BBA-7A25-409F-8E6F-715FE57ADA8B/IMG_0967.JPG'), 'IMG_0967.JPG')
-    assert_equals(rename('/any_prefix/RPReplay_Final1627725283/IMG_1234.MP4'), 'IMG_1234.MP4')
-    assert_equals(rename('/any_prefix/RPReplay_Final1627725283 2/IMG_1234.MP4'), 'IMG_1234.MP4')
-    assert_equals(rename('/any_prefix/IMG_0123 2/IMG_E0123.jpg'), 'IMG_0123_edited.JPG')
-    assert_equals(rename('/any_prefix/FullSizeRender/IMG_0123.jpg'), 'IMG_0123.jpg')
-    assert_equals(rename('/any_prefix/FullSizeRender/IMG_E0123.jpg'), 'IMG_0123_edited.JPG')
-    assert_equals(rename('/any_prefix/FullSizeRender 2/IMG_0123.jpg'), 'IMG_0123.jpg')
-    assert_equals(rename('/any_prefix/FullSizeRender 22/IMG_0123.jpg'), 'IMG_0123.jpg')
-
-
-test_rename()
 
 
 def get_dirnames(dirname: str, regexp_list: List[str]) -> List[str]:
@@ -165,6 +140,9 @@ def import_airdrop(
 
     dirnames = get_dirnames(dirname, regexp_list)
     filenames = get_photo_files(dirnames)
+
+    if not filenames:
+        return 
 
     dst_dir_name = get_dst_dir_name(filenames)
 

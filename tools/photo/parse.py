@@ -7,7 +7,8 @@ import json
 # https://stuvel.eu/flickrapi
 import flickrapi
 
-class Photo(object):
+
+class Photo:
     def RequiredSizes(self):
         return ['Large Square', 'Original']
 
@@ -31,7 +32,7 @@ class Photo(object):
         return str(self.__str__())
 
 
-class Flickr(object):
+class Flickr:
     def __init__(self, *, username: str, apiKey: str, apiSecret: str):
         self.FlickrAPI = flickrapi.FlickrAPI(apiKey, apiSecret, format='parsed-json')
 
@@ -66,7 +67,7 @@ class Flickr(object):
             yield photo
 
 
-class MinMax(object):
+class MinMax:
     def __init__(self):
         self.Min = None
         self.Max = None
