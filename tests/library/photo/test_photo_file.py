@@ -1,7 +1,7 @@
 import pytest
 import datetime
 
-from library.photo.photo_file import get_dt_from_exif, cut_large_hour
+from library.photo.photo_file import get_dt_from_exif, cut_large_hour, get_timedelta
 
 
 @pytest.mark.parametrize(
@@ -49,3 +49,16 @@ def test_cut_large_hour(dt, expected_dt, expected_days):
     result_dt, result_days = cut_large_hour(dt)
     assert result_dt == expected_dt
     assert result_days == expected_days
+
+
+
+
+@pytest.mark.parametrize(
+    'line, expected',
+    [
+        ('+04:00\x00', datetime.timedelta(seconds=14400)),
+        ('+04:00', datetime.timedelta(seconds=14400)),
+    ],
+)
+def test_get_timedelta(line, expected):
+    assert get_timedelta(line) == expected

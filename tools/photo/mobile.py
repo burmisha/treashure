@@ -1,3 +1,5 @@
+from typing import Optional
+
 import json
 import os
 
@@ -7,34 +9,30 @@ import attr
 import logging
 log = logging.getLogger(__name__)
 
+PARSE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'dng'}
+SKIP_EXTENSIONS = {
+    'ds_store', 'ini', # ok
+    'mp4', 'mov', 'nar', 'icon', 'gif', # TODO
+    'aae',
+}
 
-class Processor(object):
-    def __init__(self):
-        self.ParseExtensions = [ 'jpg', 'jpeg', 'png', 'dng' ]
-        self.SkipExtensions = [
-            'ds_store', 'ini', # ok
-            'mp4', 'mov', 'nar', 'icon', 'gif', # TODO
-        ]
-        self.OpenedDir = False
 
-    def __call__(self, filename):
-        extension = os.path.basename(filename).split('.')[-1].lower().strip()
-        photoFile = None
-        if extension in self.ParseExtensions:
-            return PhotoFile(filename)
-        elif extension in self.SkipExtensions:
-            log.debug(f'Skipping {filename}')
-            return None
-        else:
-            log.error(f'Unknown file extension: {filename!r}: {extension!r}')
-            if not self.OpenedDir:
-                self.OpenedDir = True
-                library.files.open_dir(filename)
-            # raise RuntimeError()
+def to_photo_file(filename) -> Optional[library.photo.photo_file.PhotoFile]:
+    extension = os.path.basename(filename).split('.')[-1].lower().strip()
+    if extension in PARSE_EXTENSIONS:
+        return library.photo.photo_file.PhotoFile(filename)
+    elif extension in SKIP_EXTENSIONS:
+        log.debug(f'Skipping {filename}')
+        return None
+    else:
+        log.error(f'Unknown file extension: {filename!r}: {extension!r}')
+        library.files.open_dir(filename)
+        raise RuntimeError('Unknown file extension')
 
 
 def get_filenames(dirs, files, skip_paths):
     filenames_count = 0
+
     for filename in files:
         filenames_count += 1
         yield filename
@@ -55,17 +53,17 @@ def get_filenames(dirs, files, skip_paths):
     log.info(f'Yielded {filenames_count} photo files')
 
 
-def processDirs(args):
-    photo_files = []
-    processor = Processor()
-    for filename in get_filenames(args.dir, args.file, args.skip):
-        photo_file = processor(filename)
-        if photo_file is not None:
-            photo_files.append(photo_file)
+def process_dirs(args):
+    photo_files = [
+        to_photo_file(filename)
+        for filename in get_filenames(args.dir, args.file, args.skip)
+    ]
+
+    data = [attr.asdict(photo_file.photo_info) for photo_file in photo_files if photo_file]
 
     with open(args.json_file, 'w') as f:
         f.write(json.dumps(
-            [attr.asdict(photo_file.photo_info) for photo_file in photo_files],
+            data,
             indent=4,
             sort_keys=True,
             ensure_ascii=False,
@@ -77,4 +75,4 @@ def populate_parser(parser):
     parser.add_argument('--dir', help='Add dir to parsing', action='append', default=[])
     parser.add_argument('--skip', help='Exclude paths from parsing', action='append', default=[])
     parser.add_argument('--file', help='Add file to parsing', action='append', default=[])
-    parser.set_defaults(func=processDirs)
+    parser.set_defaults(func=process_dirs)

@@ -11,6 +11,9 @@ import PIL
 import PIL.Image
 import PIL.ExifTags
 
+import library.md5sum
+from library.photo.parse_timestamp import parse_timestamp
+
 import logging
 log = logging.getLogger(__name__)
 
@@ -189,6 +192,7 @@ def get_microsecond(subsec: str) -> int:
 
 
 def get_timedelta(offset: str) -> datetime.timedelta:
+    offset = offset.strip('\x00')
     res = re.search(r'^\+(\d\d):00$', offset)
     if res:
         hours = int(res.group(1))
