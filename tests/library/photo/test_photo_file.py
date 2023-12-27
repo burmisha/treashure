@@ -51,8 +51,6 @@ def test_cut_large_hour(dt, expected_dt, expected_days):
     assert result_days == expected_days
 
 
-
-
 @pytest.mark.parametrize(
     'line, expected',
     [

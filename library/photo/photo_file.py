@@ -10,6 +10,7 @@ import attr
 import PIL
 import PIL.Image
 import PIL.ExifTags
+import PIL.TiffTags
 
 import library.md5sum
 from library.photo.parse_timestamp import parse_timestamp
@@ -42,10 +43,58 @@ class PhotoInfo:
 	    )
 
 
-@attr.s
-class PhotoFile:
-    Path: str = attr.ib()
+SKIP_TIFF_TAGS = {50935, 50936, 50940} # https://www.awaresystems.be/imaging/tiff/tifftags/private.html
 
+def parse_tiff_exif(data: dict) -> dict:
+    # https://stackoverflow.com/questions/46477712/reading-tiff-image-metadata-in-python
+    result = {}
+    for key, value in data.items():
+        if key not in PIL.TiffTags.TAGS:
+            if key in SKIP_TIFF_TAGS:
+                continue
+            else:
+                log.error(f'Unknown key {key!r} for {value!r}')
+                raise ValueError(f'Unknown key {key!r} for {value!r}')
+
+        if isinstance(value, tuple) and len(value) == 1:
+            value = value[0]
+
+        result[PIL.TiffTags.TAGS[key]] = value
+
+
+    return result
+
+
+def parse_jpg_exif(data: dict) -> dict:
+    # https://stackoverflow.com/questions/4764932/in-python-how-do-i-read-the-exif-data-for-an-image
+    result = {
+        PIL.ExifTags.TAGS[k]: v
+        for k, v in data.items()
+        if k in PIL.ExifTags.TAGS
+    }
+
+    return result
+
+def get_exif(filename: str) -> Optional[dict]:
+    with PIL.Image.open(filename) as image:
+        if image.format == 'TIFF':
+            return parse_tiff_exif(image.tag)
+        elif image.format == 'PNG':
+            return None
+        else:
+            return parse_jpg_exif(image._getexif())
+
+
+class PhotoFileAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return '[%s] %s' % (self.extra['filename'], msg), kwargs
+
+
+class PhotoFile:
+    def __init__(self, filename):
+        self.Path = filename
+        short_name = self.Path.removeprefix(library.files.Location.YandexDisk).lstrip(os.sep)
+        self.log = PhotoFileAdapter(logging.getLogger(__name__), {'filename': short_name})
 
     @property
     def photo_info(self):
@@ -64,22 +113,17 @@ class PhotoFile:
         return self.Basename.split('.')[-1]
 
     @cached_property
-    def Exif(self) -> dict:
-        with PIL.Image.open(self.Path) as image:
-            if image.format != 'PNG':
-                rawExif = image._getexif()
-                if rawExif:
-                    # https://stackoverflow.com/questions/4764932/in-python-how-do-i-read-the-exif-data-for-an-image
-                    return {
-                        PIL.ExifTags.TAGS[k]: v
-                        for k, v in rawExif.items()
-                        if k in PIL.ExifTags.TAGS
-                    }
-
-        return None
+    def Exif(self) -> Optional[dict]:
+        exif = get_exif(self.Path)
+        # if exif:
+        #     msg = ['Exif: ']
+        #     for key, value in sorted(exif.items()):
+        #         msg.append(f'\t{key}: {value} ')
+        #     self.log.info('\n'.join(msg))
+        return exif
 
     @cached_property
-    def GpsInfo(self):
+    def GpsInfo(self) -> dict:
         # https://stackoverflow.com/questions/19804768/interpreting-gps-info-of-exif-data-from-photo-in-python
         if self.Exif and ('GPSInfo' in self.Exif):
             return {
@@ -96,22 +140,25 @@ class PhotoFile:
             if make:
                 return f'{make} {model}'
             else:
-                log.debug(f'No camera: make {make!r}, model {model!r} in {self.Path}')
+                self.log.debug(f'No camera: make {make!r}, model {model!r}')
 
+        return None
+
+    @cached_property
+    def filename_dt(self):
+        filename_ts = parse_timestamp(self.Basename)
+        if filename_ts:
+            filename_dt = datetime.datetime.utcfromtimestamp(filename_ts)
+            local_timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+            filename_dt = filename_dt.replace(tzinfo=local_timezone)
+            return filename_dt
+
+        log.debug(f'Name {self.Basename!r} has no date')
         return None
 
     @cached_property
     def datetime(self) -> Optional[datetime.datetime]:
         try:
-            filename_ts = parse_timestamp(self.Basename)
-            if filename_ts:
-                filename_dt = datetime.datetime.utcfromtimestamp(filename_ts)
-                local_timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
-                filename_dt =  filename_dt.replace(tzinfo=local_timezone)
-            else:
-                filename_dt = None
-                log.debug(f'Name {self.Basename!r} has no date')
-
             if self.Exif:
                 datetime_exif = {
                 	key: value
@@ -124,9 +171,9 @@ class PhotoFile:
                         raise RuntimeError(f'Unknown datetime key: {key!r}, value {value!r} in {self.Path}')
 
                 if datetime_exif:
-                    log.debug(f'EXIF for {self.Path}: {datetime_exif}')
+                    log.debug(f'EXIF: {datetime_exif}')
                 else:
-                    log.debug(f'No date in EXIF for {self.Path}: {self.Exif}')
+                    log.debug(f'No date in EXIF: {self.Exif}')
 
                 original_dt = get_dt_from_exif(self.Exif, 'Original')
                 if original_dt:
@@ -136,22 +183,26 @@ class PhotoFile:
                 if digitized_dt:
                     return digitized_dt
 
-                if filename_dt:
-                    return filename_dt
+                if self.filename_dt:
+                    return self.filename_dt
 
                 modification_dt = get_dt_from_exif(self.Exif, '')
                 if modification_dt:
-                    log.warn(f'Using default dt for {self.Path}: {datetime_exif}')
+                    self.log.warn(f'Using default dt: {datetime_exif}')
                     return modification_dt
 
             else:
-                log.warn(f'No EXIF in {self.Path}')
+                self.log.warn(f'No EXIF')
 
-            if filename_dt:
-                log.warn(f'Using filename dt for {self.Path}')
+            if self.filename_dt:
+                self.log.warn(f'Using filename dt')
                 return filename_dt
+
         except:
-            log.error(f'Failed to get datetime on {self.Path!r}')
+            self.log.error(f'Failed to get datetime')
+            if self.Exif:
+                self.log.error(f'Exif {self.Exif}')
+
             raise
 
         return None
@@ -165,10 +216,9 @@ class PhotoFile:
     @cached_property
     def is_vsco(self):
         if self.Exif:
-            return any(
-                isinstance(value, str) and 'vsco' in value.lower()
-                for  value in self.Exif.values()
-            )
+            for value in self.Exif.values():
+                if isinstance(value, str) and 'vsco' in value.lower():
+                    return True
 
         return False
 
@@ -202,10 +252,9 @@ def get_timedelta(offset: str) -> datetime.timedelta:
         raise ValueError(f'Invalid offset: {offset!r}')
 
 
-
 def get_dt_from_exif(exif: dict, suffix: str):
     dt_value = exif.get(f'DateTime{suffix}')
-    offset_value = exif.get(f'OffsetTime{suffix}')
+    offset_value = exif.get(f'OffsetTime{suffix}', '')
     subsec_value = exif.get(f'SubsecTime{suffix}')
 
     if not dt_value:
@@ -213,6 +262,10 @@ def get_dt_from_exif(exif: dict, suffix: str):
 
     dt_value = dt_value.strip()
     if not dt_value:
+        return None
+
+    offset_value = offset_value.strip()
+    if offset_value == ':':
         return None
 
     microsecond = get_microsecond(subsec_value)
@@ -234,4 +287,3 @@ def cut_large_hour(dt_str: str) -> Tuple[str, int]:
     else:
         return dt_str, 0
         days_delta = 0
-
