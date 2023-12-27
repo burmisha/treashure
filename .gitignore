@@ -103,4 +103,7 @@ ENV/
 # masOS and OS X
 .DS_Store
 
+.vscode
+data.json
+
 secrets.json

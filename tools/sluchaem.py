@@ -21,31 +21,53 @@ def get_response(*, resource_id: int, limit: int, offset: int):
     return response.json()
 
 
-def parse_rows(rows: list):
-    for row in rows:
-        donation = row['donation']
-        username = row['user_name']
-        likes_line = '❤️' * row['likes_count']
-
-        log.info(f'\t{donation}\t{username}\t{likes_line}')
-        for child in row.get('children', []):
+class ResultLine:
+    def __init__(self, *, donation = None, username = None, likes_count = None, children = None):
+        self.donation = donation
+        self.username = username
+        self.likes_count = likes_count
+        self.children = children
+    
+    def __str__(self):
+        likes_line = '❤️' * self.likes_count
+        msg = f'\t{self.donation}\t{self.username}\t{likes_line}'
+        for child in self.children:
             child_name = child['user_name']
             child_body = child['body']
-            log.info(f'\t\t{child_name}\t{child_body}')
+            msg += f'\n\t\t{child_name}\t{child_body}'
+        
+        return msg
+
+
+def parse_rows(rows: list):
+    for row in rows[:3]:
+        print(row)
+        result_line = ResultLine(
+            donation=row['donation'],
+            username=row['user_name'],
+            likes_count=row['likes_count'],
+            children=row.get('children') or [],
+        )
+        log.info(f'{result_line}')
 
 
 def get_rows(resource_id: int) -> list:
-    total_count = get_response(resource_id=resource_id, limit=1, offset=0)['meta']['total']
-    log.info(f'Event https://sluchaem.ru/event/{resource_id} has {total_count} rows')
     limit = 20
     offset = 0
+    total_count = None
+
     rows = []
-    while offset < total_count:
-        log.debug(f'\tUsing offset {offset}')
-        rows += get_response(resource_id=resource_id, limit=limit, offset=offset)['data']
+    while (total_count is None) or (len(rows) < total_count):
+        response = get_response(resource_id=resource_id, limit=limit, offset=offset)
+        total_count = response['meta']['total']
+        if offset == 0:
+            log.info(f'Event https://sluchaem.ru/event/{resource_id} has {total_count} rows, requesting by {limit}')
+        rows += response['data']
         offset += limit
-    log.info(f'Got {len(rows)} rows')
-    assert len(rows) == total_count
+
+    if len(rows) != total_count:
+        raise ValueError(f'Expected {total_count} rows, got {len(rows)}')
+
     return rows
 
 

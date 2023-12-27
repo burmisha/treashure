@@ -45,6 +45,7 @@ class PhotoInfo:
 
 SKIP_TIFF_TAGS = {50935, 50936, 50940} # https://www.awaresystems.be/imaging/tiff/tifftags/private.html
 
+
 def parse_tiff_exif(data: dict) -> dict:
     # https://stackoverflow.com/questions/46477712/reading-tiff-image-metadata-in-python
     result = {}

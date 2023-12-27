@@ -1,6 +1,8 @@
 import requests
 import json
 import time
+import os
+
 
 # http://web.archive.org/web/20161026011307/http://tofmal.ru/?xclasses
 ALL_CLASSES = '''
