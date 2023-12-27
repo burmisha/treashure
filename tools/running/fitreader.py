@@ -1,9 +1,7 @@
 import fitparse
 import datetime
 
-import os
-
-from typing import Tuple, List, Optional
+from typing import Optional
 from tools.running.track import Track
 from tools.running import trackpoint
 
@@ -69,6 +67,8 @@ def get_point(values: dict) -> trackpoint.TrackPoint:
         distance_m=distance_m,
     )
 
+KNOWN_SHIFTS_HOURS = [0, 1, 2, 3, 4]
+KNOWN_SHIFTS = {datetime.timedelta(seconds=3600 * shift) for shift in KNOWN_SHIFTS_HOURS}
 
 def get_activity_timezone(activity_messages: list) -> Optional[datetime.timezone]:
     assert len(activity_messages) == 1
@@ -77,18 +77,9 @@ def get_activity_timezone(activity_messages: list) -> Optional[datetime.timezone
     local_timestamp = activity_values.get('local_timestamp')
     if local_timestamp is not None:
         timedelta = local_timestamp - timestamp
-        if timedelta not in [
-            datetime.timedelta(seconds=0),
-            datetime.timedelta(seconds=3600),
-            datetime.timedelta(seconds=7200),
-            datetime.timedelta(seconds=10800),
-            datetime.timedelta(seconds=14400),
-        ]:
+        if timedelta not in KNOWN_SHIFTS:
             log.warn(f'Strange timezone: {timedelta}')
-            # print(dir(fit_file))
-            # for msg in fit_file.get_messages():
-            #     print(msg, dir())
-            # raise ValueError(f'Invalid timezone: {timedelta}')
+            raise ValueError(f'Invalid timezone: {timedelta}')
 
         return datetime.timezone(timedelta)
     else:

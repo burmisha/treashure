@@ -1,7 +1,4 @@
-import os
 import hashlib
-import platform
-import subprocess
 
 import logging
 log = logging.getLogger(__file__)
