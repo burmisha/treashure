@@ -2,7 +2,9 @@ import enum
 import os
 import platform
 import subprocess
+import json
 
+from typing import List, Optional
 
 import logging
 log = logging.getLogger(__name__)
@@ -21,7 +23,6 @@ def _get_platform() -> Platform:
         return Platform.macOS
     else:
         raise RuntimeError(f'Invalid platform system {system!r}')
-    log.info(f'Running in {mode!r} mode')
 
 
 class Location:
@@ -64,3 +65,43 @@ def open_dir(location):
             log.warn('Could not open location, only macOS is supported for now')
     else:
         raise RuntimeError('No location {!r}'.format(location))
+
+
+def get_filenames(
+    *,
+    dirs: Optional[List[str]] = None,
+    files: Optional[List[str]] = None,
+    skip_paths: Optional[List[str]] = None,
+):
+    filenames_count = 0
+
+    for filename in files:
+        filenames_count += 1
+        yield filename
+
+    skip_set = set(skip_paths) if skip_paths else set()
+    for dir_name in dirs:
+        for root, _, files in os.walk(dir_name):
+            if any(path in root for path in skip_set):
+                log.info(f'{root} is excluded')
+                continue
+
+            files = sorted(list(files))
+            log.info(f'Found {len(files)} files in {root}')
+            for filename in files:
+                filenames_count += 1
+                yield os.path.join(root, filename)
+                if filenames_count % 500 == 0:
+                    log.info(f'Yielded {filenames_count} photo files')
+
+    log.info(f'Yielded {filenames_count} photo files')
+
+
+def save_json(filename: str, data):
+    with open(filename, 'w') as f:
+        f.write(json.dumps(
+            data,
+            indent=4,
+            sort_keys=True,
+            ensure_ascii=False,
+        ))

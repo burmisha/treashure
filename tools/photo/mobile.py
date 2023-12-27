@@ -1,9 +1,5 @@
-from typing import Optional
-
-import json
-import os
-
-import library
+import library.photo.photo_file
+import library.files
 import attr
 
 import logging
@@ -17,57 +13,27 @@ SKIP_EXTENSIONS = {
 }
 
 
-def to_photo_file(filename) -> Optional[library.photo.photo_file.PhotoFile]:
-    extension = os.path.basename(filename).split('.')[-1].lower().strip()
-    if extension in PARSE_EXTENSIONS:
-        return library.photo.photo_file.PhotoFile(filename)
-    elif extension in SKIP_EXTENSIONS:
-        log.debug(f'Skipping {filename}')
-        return None
-    else:
-        log.error(f'Unknown file extension: {filename!r}: {extension!r}')
-        library.files.open_dir(filename)
-        raise RuntimeError('Unknown file extension')
-
-
-def get_filenames(dirs, files, skip_paths):
-    filenames_count = 0
-
-    for filename in files:
-        filenames_count += 1
-        yield filename
-
-    for dir_name in dirs:
-        for root, _, files in os.walk(dir_name):
-            if any(path in root for path in skip_paths):
-                log.info(f'{root} is excluded')
-                continue
-            files = sorted(list(files))
-            log.info(f'Found {len(files)} files in {root}')
-            for filename in files:
-                filenames_count += 1
-                yield os.path.join(root, filename)
-                if filenames_count % 500 == 0:
-                    log.info(f'Yielded {filenames_count} photo files')
-
-    log.info(f'Yielded {filenames_count} photo files')
-
-
 def process_dirs(args):
-    photo_files = [
-        to_photo_file(filename)
-        for filename in get_filenames(args.dir, args.file, args.skip)
-    ]
+    photo_files = []
+    for filename in library.files.get_filenames(
+        dirs=args.dir,
+        files=args.file,
+        skip_paths=args.skip,
+    ):
+        extension = filename.split('.')[-1].lower()
 
-    data = [attr.asdict(photo_file.photo_info) for photo_file in photo_files if photo_file]
+        if extension in SKIP_EXTENSIONS:
+            continue
 
-    with open(args.json_file, 'w') as f:
-        f.write(json.dumps(
-            data,
-            indent=4,
-            sort_keys=True,
-            ensure_ascii=False,
-        ))
+        if extension not in PARSE_EXTENSIONS:
+            library.files.open_dir(filename)
+            raise RuntimeError(f'Unknown file extension: {filename!r}: {extension!r}')
+
+        photo_files.append(library.photo.photo_file.PhotoFile(filename))
+
+    data = [attr.asdict(photo_file.photo_info) for photo_file in photo_files]
+
+    library.files.save_json(args.json_file, data)
 
 
 def populate_parser(parser):

@@ -4,6 +4,18 @@ import argparse
 import time
 
 import tools
+import tools.photo.mobile
+import tools.running.process.sync
+import tools.running.process.join
+import tools.running.process.analyze
+import tools.photo.deduplicate
+import tools.photo.mobile
+import tools.photo.compare
+import tools.photo.compare
+import tools.photo.parse
+import tools.photo.renamer
+import tools.photo.airdrop
+import tools.sluchaem
 
 import logging
 log = logging.getLogger('treashure')
@@ -33,6 +45,7 @@ def create_arguments_parser():
     for cmd, desc, populate_func in COMMANDS:
         subparser = subparsers.add_parser(cmd, help=desc, formatter_class=formatter_class)
         populate_func(subparser)
+
 
     return parser
 
