@@ -11,6 +11,7 @@ SKIP_EXTENSIONS = {
     'mp4', 'mov', 'nar', 'icon', 'gif', # TODO
     'aae',
     'cr2',
+    'heic',
 }
 
 

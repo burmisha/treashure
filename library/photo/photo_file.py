@@ -200,7 +200,7 @@ class PhotoFile:
 
             if self.filename_dt:
                 self.log.warn(f'Using filename dt')
-                return filename_dt
+                return self.filename_dt
 
         except:
             self.log.error(f'Failed to get datetime')
