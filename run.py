@@ -4,13 +4,12 @@ import argparse
 import time
 
 import tools
-import tools.photo.mobile
+import tools.photo.calculate
 import tools.running.process.sync
 import tools.running.process.join
 import tools.running.process.analyze
 import tools.photo.deduplicate
-import tools.photo.mobile
-import tools.photo.compare
+import tools.photo.calculate
 import tools.photo.compare
 import tools.photo.parse
 import tools.photo.renamer
@@ -26,7 +25,7 @@ COMMANDS = [
     ('track-join', 'Join old tracks into one', tools.running.process.join.populate_parser),
     ('track-analyze', 'Analyze track files', tools.running.process.analyze.populate_parser),
     ('photo-deduplicate', 'Deduplicate mobile photos', tools.photo.deduplicate.populate_parser),
-    ('photo-analyze', 'Analyze mobile photos', tools.photo.mobile.populate_parser),
+    ('photo-calculate', 'Calculate photos stats', tools.photo.calculate.populate_parser),
     ('photo-calc', 'Run calc', tools.photo.compare.populate_calc_parser),
     ('photo-compare', 'Run compare', tools.photo.compare.populate_compare_parser),
     ('flickr-parse', 'Prepare photos', tools.photo.parse.populate_parser),

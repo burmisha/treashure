@@ -63,7 +63,7 @@ def run_calc(args):
     hashes = Hashes(root=root)
 
     for sub_root, _, files in os.walk(root):
-        hash_by_name = {file: library.md5sum.Md5Sum(os.path.join(sub_root, file)) for file in files}
+        hash_by_name = {file: library.md5sum.md5sum(os.path.join(sub_root, file)) for file in files}
         if not hash_by_name:
             continue
         localized_root = sub_root.replace(root + os.sep, '').replace(os.sep, '/')

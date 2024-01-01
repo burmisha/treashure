@@ -40,7 +40,7 @@ class SrcFile:
 
     @cached_property
     def md5sum(self) -> str:
-        return library.md5sum.Md5Sum(self.filename)
+        return library.md5sum.md5sum(self.filename)
 
     @cached_property
     def mtime(self) -> str:

@@ -225,7 +225,7 @@ class PhotoFile:
 
     @cached_property
     def Md5Sum(self) -> str:
-        return library.md5sum.Md5Sum(self.Path)
+        return library.md5sum.md5sum(self.Path)
 
 
 def get_microsecond(subsec: str) -> int:

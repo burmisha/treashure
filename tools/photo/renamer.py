@@ -3,7 +3,7 @@ import os
 
 import library.files
 import library.mover
-import tools.photo.mobile
+import tools.photo.calculate
 
 import logging
 log = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def rename_dir(
     do_move: bool,
 ):
     photo_files = [
-        tools.photo.mobile.PhotoFile(file)
+        tools.photo.calculate.PhotoFile(file)
         for file in library.files.walk(dirname, extensions=['JPG', 'jpg'])
         if file_is_ok(file)
     ]

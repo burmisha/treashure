@@ -44,7 +44,7 @@ class FileMover:
                 old_src=self._dst_to_src[dst],
                 new_src=src,
                 dst=dst,
-                old_md5=library.md5sum.Md5Sum(self._dst_to_src[dst]),
+                old_md5=library.md5sum.md5sum(self._dst_to_src[dst]),
                 new_md5=library.md5sum.Md5Sum(src),
             )
             if broken_file.old_md5 == broken_file.new_md5:
