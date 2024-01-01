@@ -83,7 +83,10 @@ def get_exif(filename: str) -> Optional[dict]:
         elif image.format == 'PNG':
             return None
         else:
-            return parse_jpg_exif(image._getexif())
+            exif = image._getexif()
+            if exif is None:
+                return None
+            return parse_jpg_exif(exif)
 
 
 class PhotoFileAdapter(logging.LoggerAdapter):

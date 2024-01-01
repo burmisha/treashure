@@ -1,29 +1,37 @@
 import collections
 import json
 
-from library.photo.photo_file import PhotoFile
+from typing import DefaultDict, List
+
+from library.photo.photo_file import PhotoInfo
 
 import logging
 log = logging.getLogger(__name__)
 
 
-def deduplicate(args):
-    with open(args.json_file) as f:
-        res = json.load(f)
+def run_deduplicate(args):
+    json_file = args.json_file
+    with open(json_file) as f:
+        photo_files_json = json.load(f)
 
-    photoFiles = collections.defaultdict(list)
-    for item in res:
-        photoFile = PhotoFile.from_dict(item)
-        photoFiles[photoFile.Md5Sum].append(photoFile)
+    photos_by_md5sum: DefaultDict[str, List[PhotoInfo]] = collections.defaultdict(list)
+    for row in photo_files_json:
+        photo = PhotoInfo.from_dict(row)
+        photos_by_md5sum[photo.md5sum].append(photo)
 
-    for md5sumValue, photoFilesList in photoFiles.iteritems():
-        if len(photoFilesList) > 1:
-            log.info(u'Duplicates: {}\n  {}'.format(
-                md5sumValue,
-                '\n  '.join(photoFile.Path for photoFile in photoFilesList)
-            ))
+    collisions_count = 0
+    for md5sum, photos in photos_by_md5sum.items():
+        if len(photos) > 1:
+            names = '\n  '.join(photo.path for photo in photos)
+            log.info(f'Duplicates: {md5sum}\n  {names}')
+            collisions_count += 1
+    
+    if collisions_count:
+        log.info(f'Found {collisions_count} duplicates {json_file!r}')
+    else:
+        log.info(f'No duplicates were found in {json_file!r}')
 
 
 def populate_parser(parser):
     parser.add_argument('--json-file', help='Json file to store all data', default='data.json')
-    parser.set_defaults(func=deduplicate)
+    parser.set_defaults(func=run_deduplicate)

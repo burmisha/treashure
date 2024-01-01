@@ -10,6 +10,7 @@ SKIP_EXTENSIONS = {
     'ds_store', 'ini', # ok
     'mp4', 'mov', 'nar', 'icon', 'gif', # TODO
     'aae',
+    'cr2',
 }
 
 
