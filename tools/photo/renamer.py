@@ -2,8 +2,8 @@ import collections
 import os
 
 import library.files
-import library.mover
-import tools.photo.calculate
+from library.mover import FileMover
+from tools.photo.calculate import PhotoFile
 
 import logging
 log = logging.getLogger(__name__)
@@ -23,11 +23,11 @@ def rename_dir(
     do_move: bool,
 ):
     photo_files = [
-        tools.photo.calculate.PhotoFile(file)
+        PhotoFile(file)
         for file in library.files.walk(dirname, extensions=['JPG', 'jpg'])
         if file_is_ok(file)
     ]
-    photo_files.sort()
+    photo_files.sort(key=lambda x: x.Path)
 
     log.info(f'Checking {len(photo_files)} photo files in {dirname}')
 
@@ -38,7 +38,7 @@ def rename_dir(
         else:
             log.warn(f'No timestamp in file, skip: {photo_file.Path}')
 
-    file_mover = library.mover.FileMover()
+    file_mover = FileMover()
     for timestamp, photos in sorted(photo_files_by_timestamp.items()):
         if len(photos) >= 10:
             for photo in photos:
