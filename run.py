@@ -4,6 +4,8 @@ import argparse
 import time
 
 import tools
+import tools.charity
+import tools.charity.donations
 import tools.photo.calculate
 import tools.running.process.sync
 import tools.running.process.join
@@ -32,6 +34,7 @@ COMMANDS = [
     ('photo-rename', 'Rename vsco photos', tools.photo.renamer.populate_parser),
     ('airdrop-move', 'Move airdrop photos to one dir', tools.photo.airdrop.populate_parser),
     ('sluchaem', 'Print sluchaem data', tools.sluchaem.populate_parser),
+    ('donations', 'Print donations data', tools.charity.donations.populate_parser),
 ]
 
 

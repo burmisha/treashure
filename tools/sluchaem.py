@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import requests
 
 import logging
@@ -21,14 +22,15 @@ def get_response(*, resource_id: int, limit: int, offset: int):
     return response.json()
 
 
+@dataclass
 class ResultLine:
-    def __init__(self, *, donation = None, username = None, likes_count = None, children = None):
-        self.donation = donation
-        self.username = username
-        self.likes_count = likes_count
-        self.children = children
+    donation: str
+    username: str
+    likes_count: int
+    children: list = field(default_factory=list)
     
-    def __str__(self):
+    @property
+    def description(self) -> str:
         likes_line = '❤️' * self.likes_count
         msg = f'\t{self.donation}\t{self.username}\t{likes_line}'
         for child in self.children:
@@ -41,14 +43,13 @@ class ResultLine:
 
 def parse_rows(rows: list):
     for row in rows[:3]:
-        print(row)
         result_line = ResultLine(
             donation=row['donation'],
             username=row['user_name'],
             likes_count=row['likes_count'],
             children=row.get('children') or [],
         )
-        log.info(f'{result_line}')
+        log.info(result_line.description)
 
 
 def get_rows(resource_id: int) -> list:
