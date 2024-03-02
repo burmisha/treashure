@@ -1,14 +1,11 @@
-import requests
 from dataclasses import dataclass, field
 
-from util.secrets import SECRETS
+from tools.charity.joiner import JsonJoiner
+
+from typing import Iterable
 
 import logging
 log = logging.getLogger(__name__)
-
-
-XSRF_TOKEN = SECRETS.get('nuzhnapomosh.xsrf')
-NP_ACCESS = SECRETS.get('nuzhnapomosh.np_access')
 
 
 @dataclass
@@ -33,7 +30,10 @@ class Fund:
 
     @property
     def successful_donations(self) -> list[Donation]:
-        return [d for d in self.donations if d.status == 'success']
+        return [
+            d for d in self.donations
+            if d.status == 'success'
+        ]
 
     @property
     def total_sum(self) -> int:
@@ -45,79 +45,70 @@ class Fund:
         return f'{prefix} {self.name:40}\t{self.total_sum:6d} ({len(self.successful_donations)})\t{self.url}'
 
 
-def get_response(*, limit: int, offset: int, is_active: bool):
-    assert 1 <= limit <= 20
-    url = 'https://my.nuzhnapomosh.ru/api/v1/subscriptions/load'
-
+def get_regular_funds(*, is_active: bool) -> Iterable[Fund]:
     active = 'true' if is_active else 'false'
-    data = f'offset={offset}&limit={limit}&name=&currency=rub&active={active}&card_id=&bundles=0'
+    joiner = JsonJoiner(
+        url='https://my.nuzhnapomosh.ru/api/v1/subscriptions/load',
+        method='post',
+        post_suffix=f'&name=&currency=rub&active={active}&card_id=&bundles=0'
+    )
 
-    headers = {
-        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'cookie': f'np_access={NP_ACCESS}; XSRF-TOKEN={XSRF_TOKEN}',
-    }
-
-    response = requests.post(url, data=data, headers=headers)
-    assert response.status_code == 200
-
-    return response.json()
-
-
-def get_rows(is_active: bool) -> list:
-    limit = 20
-    offset = 0
-    total_count = None
-
-    rows = []
-    while (total_count is None) or (len(rows) < total_count):
-        response = get_response(limit=limit, offset=offset, is_active=is_active)
-        total_count = response['count']
-        if offset == 0:
-            log.info(f'Getting {total_count} donations, requesting by {limit}')
-        rows += response['data']
-        offset += limit
-
-    if len(rows) != total_count:
-        raise ValueError(f'Expected {total_count} rows, got {len(rows)}')
-
-    return rows
+    for row in joiner.get_data():
+        donations = [
+            Donation(
+                donation_id=donation['id'],
+                sum=donation['sum'],
+                date=donation['date'],
+                status=donation['status'],
+                status_name=donation['status_name'],
+            ) for donation in row['donations']
+        ]
+        yield Fund(
+            name=row['case']['name'],
+            url=row['case']['url'],
+            is_active=is_active,
+            donations=donations,
+        )
 
 
-def get_funds():
-    for is_active in [
-        True,
-        False,
-    ]:
-        rows = get_rows(is_active=is_active)
-        for row in rows:
-            donations = [
-                Donation(
-                    donation_id=d['id'],
-                    sum=d['sum'],
-                    date=d['date'],
-                    status=d['status'],
-                    status_name=d['status_name'],
-                ) for d in row['donations']
-            ]
-            yield Fund(
-                name=row['case']['name'],
-                url=row['case']['url'],
-                is_active=is_active,
-                donations=donations,
-            )
+def get_single_funds() -> Iterable[Fund]:
+    joiner = JsonJoiner(
+        url='https://my.nuzhnapomosh.ru/api/v1/payments/load',
+        method='post',
+        post_suffix=f'&filter=all&type=1&only_signup=false&search='
+    )
 
-            # del row['donations']
-            # for k, v in row.items():
-            #     print(k, v)
+    for row in joiner.get_data():
+        donation = Donation(
+            donation_id=row['id'],
+            sum=row['sum'],
+            date=row['date'],
+            status=row['status'],
+            status_name=row['status_title'],
+        )
+        yield Fund(
+            name=row['case_name'],
+            url=row['case_url'],
+            is_active=row['is_paid'],
+            donations=[donation],
+        )
 
 
-def download_donations():
-    funds = list(get_funds())
+def get_funds(
+    with_regular: bool=False, 
+    with_single: bool=True,
+):
+    funds = []
+    if with_regular:
+        funds.extend(list(get_regular_funds(is_active=True)))
+        funds.extend(list(get_regular_funds(is_active=False)))
+    if with_single:
+        funds.extend(list(get_single_funds()))
 
     for fund in funds:
         log.info(f'{fund.short_description}')
-        for donation in fund.donations:
-            log.info(f'\t{donation.short_description}')
+        # for donation in fund.donations:
+        #     log.info(f'\t{donation.short_description}')
 
     total_count = sum(len(f.successful_donations) for f in funds)
     total_sum = sum(f.total_sum for f in funds)
@@ -125,8 +116,13 @@ def download_donations():
 
 
 def run_donations(args):
-    download_donations()
+    get_funds(
+        with_regular=args.with_regular,
+        with_single=args.with_single,
+    )
 
 
 def populate_parser(parser):
     parser.set_defaults(func=run_donations)
+    parser.add_argument('-r', '--with-regular', help='Get regular donations', action='store_true')
+    parser.add_argument('-s', '--with-single', help='Get single donations', action='store_true')

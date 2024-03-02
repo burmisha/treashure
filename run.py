@@ -6,6 +6,7 @@ import time
 import tools
 import tools.charity
 import tools.charity.donations
+import tools.charity.sluchaem
 import tools.photo.calculate
 import tools.running.process.sync
 import tools.running.process.join
@@ -16,7 +17,6 @@ import tools.photo.compare
 import tools.photo.parse
 import tools.photo.renamer
 import tools.photo.airdrop
-import tools.sluchaem
 
 import logging
 log = logging.getLogger('treashure')
@@ -33,7 +33,7 @@ COMMANDS = [
     ('flickr-parse', 'Prepare photos', tools.photo.parse.populate_parser),
     ('photo-rename', 'Rename vsco photos', tools.photo.renamer.populate_parser),
     ('airdrop-move', 'Move airdrop photos to one dir', tools.photo.airdrop.populate_parser),
-    ('sluchaem', 'Print sluchaem data', tools.sluchaem.populate_parser),
+    ('sluchaem', 'Print sluchaem data', tools.charity.sluchaem.populate_parser),
     ('donations', 'Print donations data', tools.charity.donations.populate_parser),
 ]
 
