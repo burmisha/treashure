@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from tools.charity.joiner import JsonJoiner
+from tools.charity.joiner import JsonJoiner, Method
 
 import logging
 log = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class ResultLine:
 def download_sluchaem(resource_id: int) -> list[ResultLine]:
     joiner = JsonJoiner(
         url='https://api.sluchaem.ru/api/v2/comments',
-        method='get',
+        method=Method.GET,
         get_update={
             'project': 'ps',
             'resource_type': 'collection',

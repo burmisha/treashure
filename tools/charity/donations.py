@@ -1,6 +1,7 @@
+from collections import defaultdict
 from dataclasses import dataclass, field
 
-from tools.charity.joiner import JsonJoiner
+from tools.charity.joiner import JsonJoiner, Method
 
 from typing import Iterable
 
@@ -49,7 +50,7 @@ def get_regular_funds(*, is_active: bool) -> Iterable[Fund]:
     active = 'true' if is_active else 'false'
     joiner = JsonJoiner(
         url='https://my.nuzhnapomosh.ru/api/v1/subscriptions/load',
-        method='post',
+        method=Method.POST,
         post_suffix=f'&name=&currency=rub&active={active}&card_id=&bundles=0'
     )
 
@@ -74,8 +75,8 @@ def get_regular_funds(*, is_active: bool) -> Iterable[Fund]:
 def get_single_funds() -> Iterable[Fund]:
     joiner = JsonJoiner(
         url='https://my.nuzhnapomosh.ru/api/v1/payments/load',
-        method='post',
-        post_suffix=f'&filter=all&type=1&only_signup=false&search='
+        method=Method.POST,
+        post_suffix=f'&filter=all&type=1&only_signup=false&search=',
     )
 
     for row in joiner.get_data():
@@ -94,8 +95,19 @@ def get_single_funds() -> Iterable[Fund]:
         )
 
 
+def group_funds(funds: list[Fund]) -> list[Fund]:
+    result: dict[str, Fund] = {}
+    for fund in funds:
+        if fund.name in result:
+            result[fund.name].donations.extend(fund.donations)
+        else:
+            result[fund.name] = fund
+
+    return list(result.values())
+
+
 def get_funds(
-    with_regular: bool=False, 
+    with_regular: bool=False,
     with_single: bool=True,
 ):
     funds = []
@@ -103,12 +115,12 @@ def get_funds(
         funds.extend(list(get_regular_funds(is_active=True)))
         funds.extend(list(get_regular_funds(is_active=False)))
     if with_single:
-        funds.extend(list(get_single_funds()))
+        funds.extend(group_funds(list(get_single_funds())))
 
     for fund in funds:
         log.info(f'{fund.short_description}')
-        # for donation in fund.donations:
-        #     log.info(f'\t{donation.short_description}')
+        for donation in fund.donations:
+            log.info(f'\t{donation.short_description}')
 
     total_count = sum(len(f.successful_donations) for f in funds)
     total_sum = sum(f.total_sum for f in funds)

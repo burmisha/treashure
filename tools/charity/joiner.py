@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from enum import Enum
 import os
 import requests
 
@@ -12,22 +13,27 @@ log = logging.getLogger(__name__)
 CACHE = Cache(os.path.join(Location.YandexDisk, 'cache.json'))
 
 
+class Method(str, Enum):
+    GET = 'get'
+    POST = 'post'
+
+
 @dataclass
 class JsonJoiner:
     url: str
-    method: str
+    method: Method
     post_suffix: str = ''
     get_update: dict = field(default_factory=dict)
     limit: int = 20
 
     def _get_total_count(self, response) -> int:
-        if self.method == 'post':
+        if self.method == Method.POST:
             return response['count']  
         else:
             return response['meta']['total']
 
     def _make_one_request(self, *, offset: int):
-        if self.method == 'post':
+        if self.method == Method.POST:
             data = f'offset={offset}&limit={self.limit}{self.post_suffix}'
             key = f'POST__{self.url}__{data}'
         else:
@@ -36,12 +42,12 @@ class JsonJoiner:
                 'offset': offset,
             }
             params.update(self.get_update)
-            key = f'POST__{self.url}__{params}'
+            key = f'GET__{self.url}__{params}'
 
         result = CACHE.get(key)
 
         if result is None:
-            if self.method == 'post':
+            if self.method == Method.POST:
                 XSRF_TOKEN = SECRETS.get('nuzhnapomosh.xsrf')
                 NP_ACCESS = SECRETS.get('nuzhnapomosh.np_access')
                 headers = {
@@ -58,7 +64,8 @@ class JsonJoiner:
         return result
 
     def get_data(self) -> list[dict]:
-        assert 1 <= self.limit <= 20
+        if not (1 <= self.limit <= 20):
+            raise ValueError(f'Invalid limit: {self.limit}')
 
         offset = 0
         total_count = None
