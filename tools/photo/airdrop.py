@@ -21,6 +21,7 @@ REGEXPS = [
     r'FullSizeRender( \d+)?',
     r'camphoto_\d+( \d)?',
     r'Image',
+    r'IMG_\d{4}_VSCO( [23456])?',
     VSCO_RE,
     fr'{VSCO_RE} \d{{4}}-\d{{2}}-\d{{2}} at \d{{2}}\.\d{{2}}\.\d{{2}}',  # is not vsco
 ]
