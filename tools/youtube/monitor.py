@@ -1,11 +1,13 @@
-#!/usr/bin/env python3
-
 from pytube import YouTube, Channel
 from dataclasses import dataclass, asdict
 from typing import Optional
 import json
 import time
 import sys
+
+
+import logging
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -41,7 +43,6 @@ YOUTUBE_LINKS = [
     'https://www.youtube.com/watch?v=_9HN5QCLVo0',
     'https://www.youtube.com/watch?v=0tpOAVtpDos',
     'https://www.youtube.com/watch?v=2V6hXfhe618',
-    # 'https://www.youtube.com/watch?v=3aopl3Jg2Zc',
     'https://www.youtube.com/watch?v=XRYLFOcti7g',
     'https://www.youtube.com/watch?v=nFaXeLnbMgM',
     'https://www.youtube.com/watch?v=39JevUzdBXA',
@@ -68,6 +69,9 @@ def now() -> int:
 
 def get_videos(links: list[str]) -> list[YTVideo]:
     timestamp = now()
+
+    log.info(f'Getting {len(links)} videos at {timestamp} ...')
+
     videos = []
     for link in links:
         video = YouTube(link)
@@ -83,12 +87,13 @@ def get_videos(links: list[str]) -> list[YTVideo]:
     videos.sort(key=lambda v: (v.author, v.title))
 
     for video in videos:
-        print(video)
+        log.info(video)
 
     return videos
 
 
 def save_videos(videos: list[YTVideo], filename: str):
+    log.info(f'Adding {len(videos)} videos to {filename}')
     with open(filename, 'a') as f:
         for video in videos:
             if not isinstance(video, YTVideo):
@@ -96,21 +101,19 @@ def save_videos(videos: list[YTVideo], filename: str):
             f.write(f'{video.to_row()}\n')
 
 
-def main():
+def run_monitor(args):
     while True:
         try:
             videos = get_videos(YOUTUBE_LINKS)
-            save_videos(videos, 'june12.txt')
+            save_videos(videos, args.filename)
         except Exception as e:
-            print(f'Got error: {e}')
+            log.exception(f'Got error: {e}, skipping')
 
-        print('Sleeping')
-        time.sleep(60)
+        log.info(f'Sleeping for {args.sleep_time} seconds')
+        time.sleep(args.sleep_time)
 
 
-if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        print('Interrupted')
-        sys.exit(1)
+def populate_parser(parser):
+    parser.add_argument('--filename', help='Filename to save rows', default='june12.txt')
+    parser.add_argument('--sleep-time', help='Sleep time in seconds', default=60, type=int)
+    parser.set_defaults(func=run_monitor)

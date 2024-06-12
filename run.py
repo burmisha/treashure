@@ -2,6 +2,7 @@
 
 import argparse
 import time
+import sys
 
 import tools
 import tools.charity
@@ -35,6 +36,7 @@ COMMANDS = [
     ('airdrop-move', 'Move airdrop photos to one dir', tools.photo.airdrop.populate_parser),
     ('sluchaem', 'Print sluchaem data', tools.charity.sluchaem.populate_parser),
     ('donations', 'Print donations data', tools.charity.donations.populate_parser),
+    ('video-stats', 'Save videos stats', tools.youtube.monitor.populate_parser),
 ]
 
 
@@ -68,11 +70,16 @@ if __name__ == '__main__':
     start_time = time.time()
     try:
         args.func(args)
+    except KeyboardInterrupt:
+        finish_time = time.time()
+        duration = finish_time  - start_time
+        log.warning(f'Interrupted by user after {duration:.3f} seconds')
+        sys.exit(1)
     except Exception as e:
         finish_time = time.time()
         duration = finish_time  - start_time
         log.exception(f'Failed after {duration:.3f} seconds, exception: {e}')
-        exit(1)
+        sys.exit(1)
     else:
         finish_time = time.time()
         duration = finish_time  - start_time
