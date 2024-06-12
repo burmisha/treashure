@@ -1,4 +1,4 @@
-from pytube import YouTube, Channel
+from pytube import YouTube
 from dataclasses import dataclass, asdict
 from typing import Optional
 import json
