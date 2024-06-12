@@ -5,7 +5,6 @@ import json
 import time
 import sys
 
-
 import logging
 log = logging.getLogger(__name__)
 
@@ -14,16 +13,23 @@ log = logging.getLogger(__name__)
 class YTVideo:
     timestamp: int
     views: int
-    rating: Optional[float]
     title: str
     author: str
 
     def to_row(self) -> str:
         return json.dumps(asdict(self), separators=(',', ':'), ensure_ascii=False)
 
+    @classmethod
+    def from_pytype_video(cls, video: YouTube, timestamp: int):
+        return cls(
+            author=video.author,
+            views=video.views,
+            title=video.title,
+            timestamp=timestamp,
+        )
+
 
 # https://www.youtube.com/hashtag/тынеодин
-
 YOUTUBE_LINKS = [
     'https://www.youtube.com/watch?v=fh1Z2Lrzxyw',
     'https://www.youtube.com/watch?v=SRM3_QzM7Uw',
@@ -72,22 +78,8 @@ def get_videos(links: list[str]) -> list[YTVideo]:
 
     log.info(f'Getting {len(links)} videos at {timestamp} ...')
 
-    videos = []
-    for link in links:
-        video = YouTube(link)
-        yt_video = YTVideo(
-            author=video.author,
-            views=video.views,
-            rating=video.rating,
-            title=video.title,
-            timestamp=timestamp,
-        )
-        videos.append(yt_video)
-
+    videos = [YTVideo.from_pytype_video(YouTube(link), timestamp) for link in links]
     videos.sort(key=lambda v: (v.author, v.title))
-
-    for video in videos:
-        log.info(video)
 
     return videos
 
@@ -105,6 +97,8 @@ def run_monitor(args):
     while True:
         try:
             videos = get_videos(YOUTUBE_LINKS)
+            for video in videos:
+                log.info(video)
             save_videos(videos, args.filename)
         except Exception as e:
             log.exception(f'Got error: {e}, skipping')
