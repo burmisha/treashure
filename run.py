@@ -37,6 +37,7 @@ COMMANDS = [
     ('sluchaem', 'Print sluchaem data', tools.charity.sluchaem.populate_parser),
     ('donations', 'Print donations data', tools.charity.donations.populate_parser),
     ('video-stats', 'Save videos stats', tools.youtube.monitor.populate_parser),
+    ('video-analyze', 'Analyze videos stats', tools.youtube.analyze.populate_parser),
 ]
 
 

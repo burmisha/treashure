@@ -20,6 +20,16 @@ class YTVideo:
         return json.dumps(asdict(self), separators=(',', ':'), ensure_ascii=False)
 
     @classmethod
+    def from_json(cls, row: str):
+        data = json.loads(row)
+        return cls(
+            author=data['author'],
+            views=data['views'],
+            title=data['title'],
+            timestamp=data['timestamp'],
+        )
+
+    @classmethod
     def from_pytype_video(cls, video: YouTube, timestamp: int):
         return cls(
             author=video.author,
@@ -108,6 +118,6 @@ def run_monitor(args):
 
 
 def populate_parser(parser):
-    parser.add_argument('--filename', help='Filename to save rows', default='june12.txt')
-    parser.add_argument('--sleep-time', help='Sleep time in seconds', default=60, type=int)
+    parser.add_argument('--filename', help='Filename to save rows', default='june12.json')
+    parser.add_argument('--sleep-time', help='Sleep time in seconds', default=600, type=int)
     parser.set_defaults(func=run_monitor)
