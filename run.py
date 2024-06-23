@@ -38,6 +38,7 @@ COMMANDS = [
     ('donations', 'Print donations data', tools.charity.donations.populate_parser),
     ('video-stats', 'Save videos stats', tools.youtube.monitor.populate_parser),
     ('video-analyze', 'Analyze videos stats', tools.youtube.analyze.populate_parser),
+    ('video-download', 'Download videos', tools.youtube.download.populate_parser),
 ]
 
 
@@ -66,7 +67,14 @@ if __name__ == '__main__':
         ' %(message)s',
     ])
     logLevel = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=logLevel, format=logFormat, datefmt='%H:%M:%S')
+    logging.basicConfig(
+        level=logLevel,
+        format=logFormat,
+        datefmt='%H:%M:%S',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
 
     start_time = time.time()
     try:
